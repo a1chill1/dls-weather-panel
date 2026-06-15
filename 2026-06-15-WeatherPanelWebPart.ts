@@ -300,49 +300,50 @@ function shortName(n: string): string {
 
 // Self-contained styles, scoped under .dlswx. Uses SharePoint theme neutrals where
 // reasonable; lays out responsively and wraps on narrow screens.
+// DARK THEME (v1.0.0.2) - matches the dark DossSurveying home page. Scoped under .dlswx.
 const DLSWX_CSS = `
-.dlswx{font-family:'Segoe UI',system-ui,sans-serif;color:#252423;border:1px solid #edebe9;border-radius:8px;overflow:hidden;background:#fff;box-shadow:0 1.6px 3.6px rgba(0,0,0,.08)}
-.dlswx-head{display:flex;justify-content:space-between;align-items:center;padding:12px 16px;background:#0b3d66;color:#fff}
+.dlswx{font-family:'Segoe UI',system-ui,sans-serif;color:#e6e4e2;border:1px solid #3b3a39;border-radius:8px;overflow:hidden;background:#1b1a19;box-shadow:0 1.6px 3.6px rgba(0,0,0,.45)}
+.dlswx-head{display:flex;justify-content:space-between;align-items:center;padding:12px 16px;background:#0a2c49;color:#fff;border-bottom:1px solid #16334f}
 .dlswx-title{font-size:18px;font-weight:600}
 .dlswx-loc{font-size:13px;opacity:.85;margin-left:8px}
-.dlswx-updated{font-size:12px;opacity:.85}
+.dlswx-updated{font-size:12px;opacity:.8}
 .dlswx-alerts{padding:8px 16px 0}
 .dlswx-alert{padding:8px 12px;border-radius:6px;margin-bottom:6px;font-size:13px;font-weight:600}
-.dlswx-alert-sev{background:#fde7e9;color:#a4262c;border:1px solid #f1bbbe}
-.dlswx-alert-mod{background:#fff4ce;color:#797673;border:1px solid #f3e2b0}
+.dlswx-alert-sev{background:#3b1416;color:#f5a3a6;border:1px solid #7a2a2e}
+.dlswx-alert-mod{background:#3a3209;color:#f3e0a0;border:1px solid #7a6a1e}
 .dlswx-alert-h{display:block;font-weight:400;font-size:12px;margin-top:2px;opacity:.9}
 .dlswx-grid{display:flex;gap:16px;padding:12px 16px}
 .dlswx-radar{flex:1 1 360px;min-width:280px}
 .dlswx-now{flex:1 1 320px;min-width:260px}
-.dlswx-sub{font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;color:#605e5c;margin:0 0 6px}
+.dlswx-sub{font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;color:#a19f9d;margin:0 0 6px}
 .dlswx-sub-7{padding:0 16px}
-.dlswx-radar img{width:100%;height:auto;border:1px solid #edebe9;border-radius:6px;display:block;background:#f3f2f1;min-height:120px}
-.dlswx-radar-cap{font-size:11px;color:#a19f9d;margin-top:4px}
+.dlswx-radar img{width:100%;height:auto;border:1px solid #3b3a39;border-radius:6px;display:block;background:#0f0f0f;min-height:120px}
+.dlswx-radar-cap{font-size:11px;color:#7a7775;margin-top:4px}
 .dlswx-current{display:flex;align-items:center;gap:10px;margin-bottom:10px}
-.dlswx-cur-icon{width:54px;height:54px;border-radius:6px}
-.dlswx-cur-temp{font-size:30px;font-weight:600;line-height:1}
-.dlswx-cur-desc{font-size:13px;color:#323130}
-.dlswx-cur-wind{font-size:12px;color:#605e5c;margin-top:2px}
+.dlswx-cur-icon{width:54px;height:54px;border-radius:6px;background:#2d2c2b}
+.dlswx-cur-temp{font-size:30px;font-weight:600;line-height:1;color:#fff}
+.dlswx-cur-desc{font-size:13px;color:#e1dfdd}
+.dlswx-cur-wind{font-size:12px;color:#a19f9d;margin-top:2px}
 .dlswx-hourly{display:flex;gap:5px;overflow-x:auto;padding-bottom:4px}
 .dlswx-hr{flex:0 0 auto;width:34px;text-align:center}
-.dlswx-hr-t{font-size:11px;color:#605e5c}
-.dlswx-hr-bar{height:48px;width:14px;margin:3px auto;background:#eef3f8;border-radius:3px;display:flex;align-items:flex-end;overflow:hidden}
-.dlswx-hr-fill{width:100%;background:#7fb1de}
-.dlswx-hr-fill.dlswx-pop-hi{background:#1f7fd1}
-.dlswx-hr-p{font-size:11px;color:#0b3d66;font-weight:600}
-.dlswx-hr-temp{font-size:11px;color:#605e5c}
+.dlswx-hr-t{font-size:11px;color:#a19f9d}
+.dlswx-hr-bar{height:48px;width:14px;margin:3px auto;background:#2d2c2b;border-radius:3px;display:flex;align-items:flex-end;overflow:hidden}
+.dlswx-hr-fill{width:100%;background:#4a90d9}
+.dlswx-hr-fill.dlswx-pop-hi{background:#2b88e0}
+.dlswx-hr-p{font-size:11px;color:#7fb1de;font-weight:600}
+.dlswx-hr-temp{font-size:11px;color:#a19f9d}
 .dlswx-7day{display:flex;gap:8px;padding:6px 16px 14px;overflow-x:auto}
-.dlswx-day{flex:0 0 auto;width:96px;text-align:center;border:1px solid #edebe9;border-radius:6px;padding:8px 4px;background:#faf9f8}
-.dlswx-day-n{font-size:12px;font-weight:600;color:#323130;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dlswx-day{flex:0 0 auto;width:96px;text-align:center;border:1px solid #3b3a39;border-radius:6px;padding:8px 4px;background:#252423}
+.dlswx-day-n{font-size:12px;font-weight:600;color:#f3f2f1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .dlswx-day-icon{width:42px;height:42px;margin:4px 0}
 .dlswx-day-temps{font-size:14px}
-.dlswx-hi{font-weight:700;color:#252423}
-.dlswx-lo{color:#a19f9d;margin-left:5px}
-.dlswx-day-pop{font-size:11px;color:#3a6ea5}
-.dlswx-day-pop.dlswx-pop-hi{color:#1f7fd1;font-weight:700}
-.dlswx-day-s{font-size:10px;color:#605e5c;line-height:1.25;margin-top:3px;height:38px;overflow:hidden}
-.dlswx-foot{font-size:11px;color:#a19f9d;padding:8px 16px 12px;border-top:1px solid #f3f2f1}
-.dlswx-foot a{color:#0b3d66}
+.dlswx-hi{font-weight:700;color:#fff}
+.dlswx-lo{color:#8a8886;margin-left:5px}
+.dlswx-day-pop{font-size:11px;color:#7fb1de}
+.dlswx-day-pop.dlswx-pop-hi{color:#4aa3e8;font-weight:700}
+.dlswx-day-s{font-size:10px;color:#a19f9d;line-height:1.25;margin-top:3px;height:38px;overflow:hidden}
+.dlswx-foot{font-size:11px;color:#7a7775;padding:8px 16px 12px;border-top:1px solid #2d2c2b}
+.dlswx-foot a{color:#7fb1de}
 .dlswx-err{font-size:12px;color:#a19f9d;font-style:italic;padding:6px 0}
 @media (max-width:640px){.dlswx-grid{flex-direction:column}}
 `;
