@@ -1,0 +1,96 @@
+# Place at .github/workflows/build-weather-spfx.yml in the repo that holds
+# WeatherPanelWebPart.ts (at the repo root, same pattern as the Coverage Map build).
+# Builds the DLS Weather Panel SPFx package and uploads the .sppkg as a downloadable artifact.
+#
+# Mirrors the proven Coverage Map workflow:
+#   * Node 18 (SPFx 1.18.x requires Node 16/18 - NOT 20/22)
+#   * PINNED solution + component IDs so rebuilds UPGRADE the deployed app in place
+#     (the page auto-loads new code on the next load, no re-add needed).
+#   * No external npm libs - the web part is pure fetch() + DOM, nothing to bundle.
+name: Build Weather Panel SPFx package
+
+on:
+  workflow_dispatch: {}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      CI: "true"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "18.17.1"
+
+      - name: Install SPFx toolchain
+        run: npm install -g gulp-cli yo@4.3.1 @microsoft/generator-sharepoint@1.18.2
+
+      - name: Scaffold a clean SPFx solution
+        run: |
+          yo @microsoft/sharepoint \
+            --solution-name "dls-weather-panel" \
+            --component-type webpart \
+            --component-name "WeatherPanel" \
+            --component-description "DLS Weather Panel - NOAA/NWS radar + forecast" \
+            --framework none \
+            --skip-install true \
+            --no-insight
+          ls -la dls-weather-panel/src/webparts/weatherPanel/ || true
+
+      - name: Inject the Weather Panel web part code
+        run: cp 2026-06-15-WeatherPanelWebPart.ts dls-weather-panel/src/webparts/weatherPanel/WeatherPanelWebPart.ts
+
+      - name: Pin solution + component IDs (upgrade in place), bump version, set picker title
+        run: |
+          cd dls-weather-panel
+          python3 - << 'PY'
+          import json, glob, re
+          ps = 'config/package-solution.json'
+          d = json.load(open(ps, encoding='utf-8'))
+          d['solution']['id'] = 'feef3239-b0e0-4474-bc12-dc0a4cf91a9c'
+          d['solution']['version'] = '1.0.0.1'
+          json.dump(d, open(ps, 'w', encoding='utf-8'), indent=2)
+          mf = glob.glob('src/webparts/weatherPanel/*.manifest.json')[0]
+          t = open(mf, encoding='utf-8').read()
+          t2 = re.sub(r'("id"\s*:\s*")[0-9a-fA-F-]{36}(")',
+                      r'\g<1>971edc8a-2f76-4916-a28d-fdc6637011b3\g<2>', t, count=1)
+          assert t2 != t, 'manifest component id not found/replaced'
+          # Friendly name in the web part toolbox (non-fatal if the shape differs).
+          t2 = t2.replace('"title": { "default": "WeatherPanel" }', '"title": { "default": "DLS Weather Panel" }')
+          t2 = re.sub(r'("title"\s*:\s*\{\s*"default"\s*:\s*")WeatherPanel(")', r'\1DLS Weather Panel\2', t2)
+          open(mf, 'w', encoding='utf-8').write(t2)
+          print('Pinned solution id+version in', ps, 'and component id in', mf)
+          PY
+
+      - name: Install dependencies
+        run: |
+          cd dls-weather-panel
+          npm install
+
+      - name: Build + package (ship)
+        run: |
+          cd dls-weather-panel
+          gulp bundle --ship
+          gulp package-solution --ship
+          ls -la sharepoint/solution/
+
+      - name: Upload the .sppkg (artifact)
+        uses: actions/upload-artifact@v4
+        with:
+          name: dls-weather-panel-sppkg
+          path: dls-weather-panel/sharepoint/solution/*.sppkg
+          if-no-files-found: error
+
+      - name: Commit the .sppkg into dist/ (for direct retrieval)
+        run: |
+          mkdir -p dist
+          cp dls-weather-panel/sharepoint/solution/*.sppkg dist/dls-weather-panel.sppkg
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -f dist/dls-weather-panel.sppkg
+          git commit -m "build: weather panel sppkg [skip ci]"
+          git push
