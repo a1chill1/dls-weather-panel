@@ -52,7 +52,7 @@ jobs:
           ps = 'config/package-solution.json'
           d = json.load(open(ps, encoding='utf-8'))
           d['solution']['id'] = 'feef3239-b0e0-4474-bc12-dc0a4cf91a9c'
-          d['solution']['version'] = '1.0.0.2'
+          d['solution']['version'] = '1.0.0.3'
           json.dump(d, open(ps, 'w', encoding='utf-8'), indent=2)
           mf = glob.glob('src/webparts/weatherPanel/*.manifest.json')[0]
           t = open(mf, encoding='utf-8').read()
