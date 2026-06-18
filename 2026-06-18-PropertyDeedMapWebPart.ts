@@ -2,8 +2,8 @@
 // ============================================================================
 // DLS Property & Deed Map — SPFx client-side web part (framework: none)
 // Port of the standalone 2026-06-18 map. Leaflet is BUNDLED (imported below),
-// NOT from a CDN (this tenant blocks external scripts); Leaflet CSS is inlined at
-// build time via the '/*__LEAFLET_CSS__*/' placeholder. The tenant ALLOWS external
+// NOT from a CDN (this tenant blocks external scripts); the Leaflet CSS is HARDCODED in
+// the LEAFLET_CSS const below (a build-time inline step proved unreliable). The tenant ALLOWS external
 // fetch (TN/KY parcel services, ArcGIS geocoder, the deed Worker) and external
 // <img> (Esri tiles), so those work as-is.
 //
@@ -64,6 +64,11 @@ const LEAFLET_CSS = `
 .leaflet-container .leaflet-overlay-pane svg{max-width:none!important;max-height:none!important;}
 .leaflet-container .leaflet-marker-pane img,.leaflet-container .leaflet-shadow-pane img,.leaflet-container .leaflet-tile-pane img,.leaflet-container img.leaflet-image-layer,.leaflet-container .leaflet-tile{max-width:none!important;max-height:none!important;width:auto;padding:0;}
 .leaflet-marker-icon,.leaflet-marker-shadow{display:block;}
+.leaflet-pane > svg path,.leaflet-tile-container{pointer-events:none;}
+.leaflet-pane > svg path.leaflet-interactive,svg.leaflet-image-layer.leaflet-interactive path{pointer-events:visiblePainted;pointer-events:auto;}
+.leaflet-zoom-anim .leaflet-zoom-animated{transition:transform 0.25s cubic-bezier(0,0,0.25,1);}
+.leaflet-zoom-anim .leaflet-tile,.leaflet-pan-anim .leaflet-tile{transition:none;}
+.leaflet-zoom-anim .leaflet-zoom-hide{visibility:hidden;}
 .leaflet-container{cursor:grab;}
 .leaflet-interactive{cursor:pointer;}
 .leaflet-grab{cursor:grab;}
@@ -174,7 +179,8 @@ export interface IPropertyDeedMapWebPartProps { title: string; workerUrl: string
 export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPropertyDeedMapWebPartProps> {
   private map:any; private parcelLayer:any; private hiLayer:any; private labels:any; private bases:any;
   private POP:any = {}; private pseq=0;
-  private inflight:any[] = []; private loadTimer:any = null;
+  private inflight:any[] = []; private loadTimer:any = null; private rzTimer:any = null;
+  private loadedBounds:any = null; private loadedZoom:number = -1;
 
   protected onInit(): Promise<void> {
     if (!document.getElementById('dls-leaflet-css')) {
@@ -268,9 +274,10 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
     this.labels = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}',{maxZoom:20,opacity:.9}).addTo(this.map);
     this.parcelLayer = L.geoJSON(null,{ style:()=>({color:'#ffd24d',weight:1,fillColor:'#000',fillOpacity:0.001}), onEachFeature:(ft:any,layer:any)=>this.onFeat(ft,layer) }).addTo(this.map);
     this.hiLayer = L.geoJSON(null,{ style:{color:'#ff2d55',weight:3,fill:false} }).addTo(this.map);
-    this.map.on('moveend',()=>{ clearTimeout(this.loadTimer); this.loadTimer=setTimeout(()=>this.loadParcels(),250); });
+    this.map.on('moveend',()=>{ clearTimeout(this.loadTimer); this.loadTimer=setTimeout(()=>this.maybeLoad(),250); });
     this.setStatus('Pan/zoom to your area — parcels load at zoom '+MINZOOM+'+');
-    setTimeout(()=>this.loadParcels(),400);
+    setTimeout(()=>{ try{ this.map.invalidateSize(); }catch(e){} this.loadParcels(); },400);
+    window.addEventListener('resize',()=>{ clearTimeout(this.rzTimer); this.rzTimer=setTimeout(()=>{ try{ if(this.map) this.map.invalidateSize(); }catch(e){} },200); });
   }
 
   private setBase(v:string): void {
@@ -284,30 +291,55 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
     return SOURCES.filter((s)=>bboxIntersect(vb,s.bbox));
   }
 
+  // Fetch ArcGIS JSON; if a server rejects resultRecordCount (no pagination support), retry once without it.
+  private arcgisFetch(url:string, signal?:any): Promise<any> {
+    const go=(u:string)=>fetch(u, signal?{signal:signal}:{}).then((r)=>r.json());
+    return go(url).then((d:any)=>{
+      if(d && d.error && /pagination|resultRecordCount|exceed/i.test(String(d.error.message||''))){
+        const u2=url.replace(/&resultRecordCount=\d+/,'');
+        if(u2!==url) return go(u2);
+      }
+      return d;
+    });
+  }
+
+  // Only reload if the view left the already-loaded (padded) area — keeps popups open and avoids flicker on small pans / popup auto-pan.
+  private maybeLoad(): void {
+    const z=this.map.getZoom();
+    if(z>=MINZOOM && this.loadedBounds && this.loadedZoom===z && this.loadedBounds.contains(this.map.getBounds())) return;
+    this.loadParcels();
+  }
+
   private loadParcels(): void {
     this.inflight.forEach((c)=>{ try{c.abort();}catch(e){} }); this.inflight=[];
     const legsrc = this.domElement.querySelector('#legsrc') as any;
-    if(this.map.getZoom()<MINZOOM){ this.parcelLayer.clearLayers(); this.setStatus('Zoom in to load parcels (zoom ≥ '+MINZOOM+')'); if(legsrc) legsrc.textContent='Active data: —'; return; }
+    if(this.map.getZoom()<MINZOOM){ this.parcelLayer.clearLayers(); this.loadedBounds=null; this.loadedZoom=-1; this.setStatus('Zoom in to load parcels (zoom ≥ '+MINZOOM+')'); if(legsrc) legsrc.textContent='Active data: —'; return; }
     const srcs=this.activeSources();
-    if(srcs.length===0){ this.parcelLayer.clearLayers(); this.setStatus('No parcel source covers this view'); return; }
+    if(srcs.length===0){ this.parcelLayer.clearLayers(); this.loadedBounds=null; this.setStatus('No parcel source covers this view'); return; }
     if(legsrc) legsrc.textContent='Active data: '+srcs.map((s)=>s.label.replace(/^..? — /,'')).join(', ');
-    const b=this.map.getBounds(); const env=[b.getWest(),b.getSouth(),b.getEast(),b.getNorth()].join(',');
+    const pb=this.map.getBounds().pad(0.4); this.loadedBounds=pb; this.loadedZoom=this.map.getZoom();
+    const env=[pb.getWest(),pb.getSouth(),pb.getEast(),pb.getNorth()].join(',');
     this.setStatus('Loading parcels…'); this.parcelLayer.clearLayers();
     let got=0, done=0; const errs:string[]=[];
+    const short=(s:any)=>s.label.replace(/^..? — /,'');
+    const finish=()=>{ if(done===srcs.length) this.setStatus(got+' parcels'+(errs.length?'  · unavailable: '+errs.join('; '):'')); };
+    const httpsPage = (typeof location!=='undefined' && location.protocol==='https:');
     srcs.forEach((s)=>{
+      if(httpsPage && /^http:\/\//i.test(s.url)){ errs.push(short(s)+' (HTTP-only — needs HTTPS proxy)'); done++; finish(); return; }
       const ctrl=new AbortController(); this.inflight.push(ctrl);
       const url=s.url+'?'+qs({where:s.where||'1=1',geometry:env,geometryType:'esriGeometryEnvelope',inSR:4326,spatialRel:'esriSpatialRelIntersects',outFields:outFieldsFor(s),returnGeometry:true,outSR:4326,resultRecordCount:2000,f:'json'});
-      fetch(url,{signal:ctrl.signal}).then((r)=>r.json()).then((d:any)=>{
+      this.arcgisFetch(url,ctrl.signal).then((d:any)=>{
         if(d.error) throw new Error(d.error.message||'service error');
         const feats=esriToFeatures(d); feats.forEach((f:any)=>{ f.properties.__src=s.id; });
         this.parcelLayer.addData(feats); got+=feats.length;
-      }).catch((e:any)=>{ if(e.name!=='AbortError') errs.push(s.label.replace(/^..? — /,'')+' ('+e.message+')'); })
-        .then(()=>{ done++; if(done===srcs.length) this.setStatus(got+' parcels'+(errs.length?'  · unavailable: '+errs.join('; '):'')); });
+      }).catch((e:any)=>{ if(e.name!=='AbortError') errs.push(short(s)+' ('+e.message+')'); })
+        .then(()=>{ done++; finish(); });
     });
   }
 
   private onFeat(feat:any, layer:any): void {
-    layer.on('click',()=>{ const src=SOURCES.filter((s)=>s.id===feat.properties.__src)[0]||SOURCES[0]; const n=normalize(feat.properties,src); layer.bindPopup(this.popupHtml(n),{maxWidth:300}).openPopup(); });
+    // Standalone MAP popup (NOT bound to the parcel layer) so a parcel reload can't close it → no re-clicking.
+    layer.on('click',(ev:any)=>{ const src=SOURCES.filter((s)=>s.id===feat.properties.__src)[0]||SOURCES[0]; const n=normalize(feat.properties,src); const ll=(ev&&ev.latlng)||(layer.getBounds&&layer.getBounds().getCenter()); L.popup({maxWidth:300,autoPanPadding:[24,24]}).setLatLng(ll).setContent(this.popupHtml(n)).openOn(this.map); });
   }
 
   private popupHtml(n:any): string {
@@ -405,7 +437,7 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
     if(src.where && src.where!=='1=1') where='('+src.where+') AND ('+where+')';
     this.setStatus('Searching '+src.label.replace(/^..? — /,'')+'…');
     const url=src.url+'?'+qs({where:where,outFields:outFieldsFor(src),returnGeometry:true,outSR:4326,resultRecordCount:60,f:'json'});
-    fetch(url).then((r)=>r.json()).then((d:any)=>{ if(d.error) throw new Error(d.error.message||'error'); const feats=esriToFeatures(d); feats.forEach((f:any)=>{ f.properties.__src=src.id; }); this.showResults(feats,src); })
+    this.arcgisFetch(url).then((d:any)=>{ if(d.error) throw new Error(d.error.message||'error'); const feats=esriToFeatures(d); feats.forEach((f:any)=>{ f.properties.__src=src.id; }); this.showResults(feats,src); })
       .catch((e:any)=>this.setStatus('Search failed: '+e.message));
   }
 
