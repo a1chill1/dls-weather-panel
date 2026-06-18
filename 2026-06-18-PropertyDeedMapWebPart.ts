@@ -22,7 +22,62 @@ import { BaseClientSideWebPart } from '@microsoft/sp-webpart-base';
 import * as LeafletNS from 'leaflet';
 
 const L: any = LeafletNS as any;
-const LEAFLET_CSS = '/*__LEAFLET_CSS__*/';   // build step inlines leaflet.css here
+
+// Leaflet 1.9.4 stylesheet, hardcoded inline (the tenant blocks external CSS links, and a
+// build-time inline step proved unreliable — so the CSS lives here so it can never be dropped).
+const LEAFLET_CSS = `
+.leaflet-pane,.leaflet-tile,.leaflet-marker-icon,.leaflet-marker-shadow,.leaflet-tile-container,.leaflet-pane>svg,.leaflet-pane>canvas,.leaflet-zoom-box,.leaflet-image-layer,.leaflet-layer{position:absolute;left:0;top:0;}
+.leaflet-container{overflow:hidden;-webkit-tap-highlight-color:transparent;background:#ddd;outline-offset:1px;font-family:"Helvetica Neue",Arial,Helvetica,sans-serif;font-size:12px;line-height:1.5;}
+.leaflet-tile,.leaflet-marker-icon,.leaflet-marker-shadow{-webkit-user-select:none;-moz-user-select:none;user-select:none;-webkit-user-drag:none;}
+.leaflet-tile{filter:inherit;visibility:hidden;}
+.leaflet-tile-loaded{visibility:inherit;}
+.leaflet-zoom-box{width:0;height:0;box-sizing:border-box;z-index:800;}
+.leaflet-pane{z-index:400;}
+.leaflet-tile-pane{z-index:200;}
+.leaflet-overlay-pane{z-index:400;}
+.leaflet-shadow-pane{z-index:500;}
+.leaflet-marker-pane{z-index:600;}
+.leaflet-tooltip-pane{z-index:650;}
+.leaflet-popup-pane{z-index:700;}
+.leaflet-map-pane canvas{z-index:100;}
+.leaflet-map-pane svg{z-index:200;}
+.leaflet-zoom-animated{transform-origin:0 0;}
+.leaflet-control{position:relative;z-index:800;pointer-events:auto;float:left;clear:both;}
+.leaflet-top,.leaflet-bottom{position:absolute;z-index:1000;pointer-events:none;}
+.leaflet-top{top:0;}.leaflet-right{right:0;}.leaflet-bottom{bottom:0;}.leaflet-left{left:0;}
+.leaflet-right .leaflet-control{float:right;margin-right:10px;}
+.leaflet-top .leaflet-control{margin-top:10px;}.leaflet-bottom .leaflet-control{margin-bottom:10px;}.leaflet-left .leaflet-control{margin-left:10px;}
+.leaflet-bar{box-shadow:0 1px 5px rgba(0,0,0,0.65);border-radius:4px;}
+.leaflet-bar a{background-color:#fff;border-bottom:1px solid #ccc;width:26px;height:26px;line-height:26px;display:block;text-align:center;text-decoration:none;color:#000;font:bold 18px/26px "Lucida Console",Monaco,monospace;}
+.leaflet-bar a:hover{background-color:#f4f4f4;}
+.leaflet-bar a:first-child{border-top-left-radius:4px;border-top-right-radius:4px;}
+.leaflet-bar a:last-child{border-bottom-left-radius:4px;border-bottom-right-radius:4px;border-bottom:none;}
+.leaflet-control-zoom{border:2px solid rgba(0,0,0,0.2);background-clip:padding-box;border-radius:4px;}
+.leaflet-control-layers{box-shadow:0 1px 5px rgba(0,0,0,0.4);background:#fff;border-radius:5px;}
+.leaflet-control-layers-toggle{background-image:url(https://unpkg.com/leaflet@1.9.4/dist/images/layers.png);width:36px;height:36px;}
+.leaflet-control-layers .leaflet-control-layers-list,.leaflet-control-layers-expanded .leaflet-control-layers-toggle{display:none;}
+.leaflet-control-layers-expanded .leaflet-control-layers-list{display:block;position:relative;}
+.leaflet-control-layers-expanded{padding:6px 10px 6px 6px;color:#333;background:#fff;}
+.leaflet-control-layers label{display:block;font-size:13px;}
+.leaflet-control-attribution{background:rgba(255,255,255,0.7);margin:0;padding:0 5px;color:#333;font-size:11px;}
+.leaflet-control-attribution a{text-decoration:none;color:#0078A8;}
+.leaflet-container .leaflet-overlay-pane svg{max-width:none!important;max-height:none!important;}
+.leaflet-container .leaflet-marker-pane img,.leaflet-container .leaflet-shadow-pane img,.leaflet-container .leaflet-tile-pane img,.leaflet-container img.leaflet-image-layer,.leaflet-container .leaflet-tile{max-width:none!important;max-height:none!important;width:auto;padding:0;}
+.leaflet-marker-icon,.leaflet-marker-shadow{display:block;}
+.leaflet-container{cursor:grab;}
+.leaflet-interactive{cursor:pointer;}
+.leaflet-grab{cursor:grab;}
+.leaflet-dragging .leaflet-grab,.leaflet-dragging .leaflet-interactive{cursor:grabbing;}
+.leaflet-popup{position:absolute;text-align:center;margin-bottom:20px;}
+.leaflet-popup-content-wrapper{padding:1px;text-align:left;border-radius:12px;background:#fff;box-shadow:0 3px 14px rgba(0,0,0,0.4);}
+.leaflet-popup-content{margin:13px 19px;line-height:1.4;min-height:1px;}
+.leaflet-popup-tip-container{width:40px;height:20px;position:absolute;left:50%;margin-top:-1px;margin-left:-20px;overflow:hidden;pointer-events:none;}
+.leaflet-popup-tip{width:17px;height:17px;padding:1px;margin:-10px auto 0;pointer-events:auto;background:#fff;box-shadow:0 3px 14px rgba(0,0,0,0.4);transform:rotate(45deg);}
+.leaflet-popup-close-button{position:absolute;top:0;right:0;border:none;text-align:center;width:24px;height:24px;font:16px/24px Tahoma,Verdana,sans-serif;color:#757575;text-decoration:none;background:transparent;cursor:pointer;}
+.leaflet-popup-close-button:hover{color:#585858;}
+.leaflet-fade-anim .leaflet-popup{opacity:0;transition:opacity 0.2s linear;}
+.leaflet-fade-anim .leaflet-map-pane .leaflet-popup{opacity:1;}
+`;
 
 // ---- TitleSearcher county map (sub:true = flat-rate; else Pay-As-You-Go) ----
 const TS_TN: any = {
