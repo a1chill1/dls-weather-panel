@@ -47,7 +47,7 @@ jobs:
           ps = 'config/package-solution.json'
           d = json.load(open(ps, encoding='utf-8'))
           d['solution']['id'] = '9a4c2e18-7b3d-4f6a-8c12-5e9d7a1b3c40'
-          d['solution']['version'] = '1.0.0.0'
+          d['solution']['version'] = '1.0.0.1'
           json.dump(d, open(ps, 'w', encoding='utf-8'), indent=2)
           mf = glob.glob('src/webparts/propertyDeedMap/*.manifest.json')[0]
           t = open(mf, encoding='utf-8').read()
@@ -63,20 +63,6 @@ jobs:
           cd dls-property-map
           npm install
           npm install leaflet@1.9.4 @types/leaflet --save --legacy-peer-deps
-
-      - name: Inline Leaflet CSS into the web part (no external CSS load)
-        run: |
-          cd dls-property-map
-          python3 - << 'PY'
-          import json
-          css = open('node_modules/leaflet/dist/leaflet.css', encoding='utf-8').read()
-          ts = 'src/webparts/propertyDeedMap/PropertyDeedMapWebPart.ts'
-          t = open(ts, encoding='utf-8').read()
-          t2 = t.replace("'/*__LEAFLET_CSS__*/'", json.dumps(css), 1)
-          assert t2 != t, 'LEAFLET_CSS placeholder not found'
-          open(ts, 'w', encoding='utf-8').write(t2)
-          print('Inlined', len(css), 'chars of Leaflet CSS')
-          PY
 
       - name: Build + package (ship)
         run: |
