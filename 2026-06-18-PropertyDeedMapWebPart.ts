@@ -1,0 +1,381 @@
+/* eslint-disable */
+// ============================================================================
+// DLS Property & Deed Map — SPFx client-side web part (framework: none)
+// Port of the standalone 2026-06-18 map. Leaflet is BUNDLED (imported below),
+// NOT from a CDN (this tenant blocks external scripts); Leaflet CSS is inlined at
+// build time via the '/*__LEAFLET_CSS__*/' placeholder. The tenant ALLOWS external
+// fetch (TN/KY parcel services, ArcGIS geocoder, the deed Worker) and external
+// <img> (Esri tiles), so those work as-is.
+//
+// Features: live parcels per viewport (TN statewide 86 co. + Davidson/Hamilton/
+// Rutherford/Montgomery/Williamson/Shelby + KY Simpson/Pulaski/Warren); owner /
+// address / parcel search; click a parcel for owner/address/parcel + a book/page-
+// first deed lookup (Cloudflare Worker → latest warranty-deed book/page → auto-run
+// TitleSearcher; Sumner/Trousdale → US Title Search handoff; owner-name fallback).
+//
+// SPFx note: popup buttons use data-act/data-id + ONE delegated listener (module
+// scope means inline onclick can't see our functions).
+// ============================================================================
+import { Version } from '@microsoft/sp-core-library';
+import { type IPropertyPaneConfiguration, PropertyPaneTextField } from '@microsoft/sp-property-pane';
+import { BaseClientSideWebPart } from '@microsoft/sp-webpart-base';
+import * as LeafletNS from 'leaflet';
+
+const L: any = LeafletNS as any;
+const LEAFLET_CSS = '/*__LEAFLET_CSS__*/';   // build step inlines leaflet.css here
+
+// ---- TitleSearcher county map (sub:true = flat-rate; else Pay-As-You-Go) ----
+const TS_TN: any = {
+  CLAY:{c:'T91',sub:true}, JACKSON:{c:'T44',sub:true}, MACON:{c:'T99',sub:true}, SMITH:{c:'63',sub:true},
+  ANDERSON:{c:'2'}, BEDFORD:{c:'34'}, BLEDSOE:{c:'T92'}, BRADLEY:{c:'13'}, CAMPBELL:{c:'T12'},
+  CARTER:{c:'T7'}, CLAIBORNE:{c:'33'}, COCKE:{c:'T19'}, COFFEE:{c:'40'}, CUMBERLAND:{c:'5'},
+  DECATUR:{c:'52'}, FAYETTE:{c:'57'}, FENTRESS:{c:'T25'}, FRANKLIN:{c:'T42'}, GILES:{c:'28'},
+  GRAINGER:{c:'T90'}, GREENE:{c:'T65'}, HAMBLEN:{c:'29'}, HAWKINS:{c:'T46'}, HICKMAN:{c:'59'},
+  HUMPHREYS:{c:'23'}, JEFFERSON:{c:'20'}, JOHNSON:{c:'T39'}, LAWRENCE:{c:'65'}, LINCOLN:{c:'T48'},
+  LOUDON:{c:'T95'}, MADISON:{c:'18'}, MARION:{c:'21'}, MAURY:{c:'53'}, MONROE:{c:'62'},
+  MOORE:{c:'M1'}, PERRY:{c:'T68'}, PICKETT:{c:'14'}, POLK:{c:'T70'}, RHEA:{c:'T43'},
+  ROANE:{c:'T69'}, SCOTT:{c:'76'}, SEQUATCHIE:{c:'T77'}, SEVIER:{c:'T16'}, SHELBY:{c:'T79'},
+  SULLIVAN:{c:'T94'}, UNICOI:{c:'56'}, UNION:{c:'T89'}, VANBUREN:{c:'T88'}, WASHINGTON:{c:'3'},
+  WEAKLEY:{c:'32'}, WHITE:{c:'36'}, WILLIAMSON:{c:'T4'}, WILSON:{c:'24'}
+};
+const US_TN: any = { SUMNER:1, TROUSDALE:1 };   // these go to US Title Search (handoff)
+const TS_BASE = 'https://www.titlesearcher.com/';
+const US_BASE = 'https://www.ustitlesearch.net/default.asp';
+
+// ---- per-county SOURCE REGISTRY (candidate field names => schema-resilient) ----
+const SOURCES: any[] = [
+  { id:'tn', label:'TN — Statewide (86 counties)', state:'TN',
+    url:'https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0/query',
+    bbox:[-90.45,34.94,-81.60,36.72], countyField:'COUNTY_NAME', where:'1=1',
+    f:{pin:['PARCELID'],owner:['OWNER'],owner2:['OWNER2'],address:['ADDRESS'],subdiv:['SUBDIV'],lot:['LOT'],acres:['DEEDAC'],assr:['LINK_TPV','LINK_TPAD'],tpad:['LINK_TPAD'],gislinkf:['GISLINK']},
+    search:{owner:'OWNER',address:'ADDRESS',parcel:'PARCELID'} },
+  { id:'davidson', label:'TN — Davidson / Nashville', state:'TN', county:'DAVIDSON',
+    url:'https://maps.nashville.gov/arcgis/rest/services/Cadastral/Parcels/MapServer/0/query',
+    bbox:[-87.06,35.96,-86.51,36.41], where:"FeatureType IS NULL OR FeatureType<>'Unit'",
+    f:{pin:['APN','STANPAR'],owner:['Owner'],address:['PropAddr'],mail:['OwnAddr1'],acres:['Acres','DeededAcreage'],zoning:['Zoning'],deedref:['OwnInstr']},
+    search:{owner:'Owner',address:'PropAddr',parcel:'APN'} },
+  { id:'hamilton', label:'TN — Hamilton / Chattanooga', state:'TN', county:'HAMILTON',
+    url:'https://mapsdev.hamiltontn.gov/hcwa03/rest/services/Live_Parcels/MapServer/0/query',
+    bbox:[-85.55,34.98,-84.96,35.46], where:"OWNERNAME1<>'Update in Progress'",
+    f:{pin:['PARCEL','TAX_MAP_NO','GISLINK'],owner:['OWNERNAME1'],owner2:['OWNERNAME2'],address:['ADDRESS']},
+    search:{owner:'OWNERNAME1',address:'ADDRESS',parcel:'PARCEL'} },
+  { id:'rutherford', label:'TN — Rutherford / Murfreesboro', state:'TN', county:'RUTHERFORD',
+    url:'https://services.arcgis.com/36I6IHIdr660pAyH/ArcGIS/rest/services/ParcelsCAMA1/FeatureServer/0/query',
+    bbox:[-86.62,35.64,-86.03,36.05], where:'GISLINK IS NOT NULL',
+    f:{pin:['ParcelID','GISLINK'],owner:['Owner1'],owner2:['Owner2'],address:['FormattedLocation','STREETADDRESS'],mail:['MailingAddress'],subdiv:['SUBDIVISION'],lot:['LOT'],acres:['CALCACRES','DEEDACRES'],zoning:['ZONING'],legalref:['LegalReference']},
+    search:{owner:'Owner1',address:'FormattedLocation',parcel:'ParcelID'} },
+  { id:'montgomery', label:'TN — Montgomery / Clarksville', state:'TN', county:'MONTGOMERY',
+    url:'https://apnsgis4.apsu.edu/arcgis/rest/services/CMCGIS/MontViewer/FeatureServer/2/query',
+    bbox:[-87.50,36.39,-87.00,36.71], where:'1=1',
+    f:{pin:['parcelid','gislink'],owner:['owner'],owner2:['owner2'],address:['propertyaddress']},
+    search:{owner:'owner',address:'propertyaddress',parcel:'parcelid'} },
+  { id:'williamson', label:'TN — Williamson / Franklin', state:'TN', county:'WILLIAMSON',
+    url:'http://arcgis2.williamson-tn.org/arcgis/rest/services/IDT/DataPull/MapServer/4/query',
+    bbox:[-87.18,35.68,-86.68,36.08], where:'1=1', note:'HTTP-only host — blocked from an HTTPS page (mixed content)',
+    f:{pin:['parcel_id','GISLINK'],owner:['owner1'],owner2:['owner2'],address:['ADDRESS']},
+    search:{owner:'owner1',address:'ADDRESS',parcel:'parcel_id'} },
+  { id:'shelby', label:'TN — Shelby / Memphis', state:'TN', county:'SHELBY',
+    url:'https://gis.shelbycountytn.gov/public/rest/services/Parcel/CERT_Parcel/MapServer/0/query',
+    bbox:[-90.31,34.94,-89.64,35.42], where:'1=1', note:'their DB connection was intermittent',
+    f:{pin:['PARCELID','PARID'],owner:['OWNER'],owner2:['OWNER_EXT'],address:['PAR_ADDR1'],mail:['OWN_ADDR1']},
+    search:{owner:'OWNER',address:'PAR_ADDR1',parcel:'PARCELID'} },
+  { id:'ky_simpson', label:'KY — Simpson / Franklin', state:'KY', county:'SIMPSON',
+    url:'https://services8.arcgis.com/D3RgmiBYTvYcNK2j/arcgis/rest/services/Parcel2026view/FeatureServer/0/query',
+    bbox:[-86.78,36.62,-86.42,36.87], where:"PIDN<>' '",
+    f:{pin:['PIDN'],owner:['NAME'],address:['Property_L'],mail:['Address_Li'],acres:['ACRES'],deedref:['DEED']},
+    search:{owner:'NAME',address:'Property_L',parcel:'PIDN'} },
+  { id:'ky_pulaski', label:'KY — Pulaski / Somerset', state:'KY', county:'PULASKI',
+    url:'https://services5.arcgis.com/cnJiyVVCFyUslPPa/arcgis/rest/services/ParcelUpdate_2026/FeatureServer/2/query',
+    bbox:[-84.82,36.91,-84.29,37.29], where:"parcel_id<>' '",
+    f:{pin:['parcel_id','Parc_lbl','Account'],owner:['owner1'],owner2:['owner2'],address:['prop_stree'],mail:['own_street'],acres:['legal_acre'],deedBook:['deed_book'],deedPage:['deed_page']},
+    search:{owner:'owner1',address:'prop_stree',parcel:'parcel_id'} },
+  { id:'ky_warren', label:'KY — Warren / Bowling Green', state:'KY', county:'WARREN',
+    url:'https://webgis.bgky.org/server/rest/services/CCPC/CCPC_Parcels/MapServer/0/query',
+    bbox:[-86.61,36.77,-86.26,37.11], where:'1=1', ownerWithheld:true,
+    f:{pin:['PVA_PARCEL'],address:['ADDRESS'],subdiv:['SUBNAME'],lot:['LOT_NUMBER'],acres:['ACRES'],zoning:['ZONING']},
+    search:{address:'ADDRESS',parcel:'PVA_PARCEL'} }
+];
+
+const MINZOOM = 15;
+
+// ---- module-scope pure helpers ----
+function esc(s: any): string { return (s==null?'':String(s)).replace(/[&<>"]/g, (c:string)=>(({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'} as any)[c])); }
+function qs(o: any): string { return Object.keys(o).map((k)=>encodeURIComponent(k)+'='+encodeURIComponent(o[k])).join('&'); }
+function pick(attrs: any, cands: any): string { if(!cands) return ''; for(let i=0;i<cands.length;i++){ const v=attrs[cands[i]]; if(v!==undefined&&v!==null&&String(v).trim()!=='') return String(v).trim(); } return ''; }
+function signedArea(r:any){ let s=0; for(let i=0;i<r.length-1;i++){ s+=(r[i][0]*r[i+1][1]-r[i+1][0]*r[i][1]); } return s; }
+function centroid(r:any){ let x=0,y=0; const n=r.length; for(let i=0;i<n;i++){ x+=r[i][0]; y+=r[i][1]; } return [x/n,y/n]; }
+function pointInRing(p:any,r:any){ const x=p[0],y=p[1]; let inside=false; for(let i=0,j=r.length-1;i<r.length;j=i++){ const xi=r[i][0],yi=r[i][1],xj=r[j][0],yj=r[j][1]; const hit=((yi>y)!=(yj>y))&&(x<(xj-xi)*(y-yi)/(yj-yi)+xi); if(hit) inside=!inside; } return inside; }
+function ringsToGeoJSON(rings:any){ let outers:any[]=[], holes:any[]=[]; rings.forEach((r:any)=>{ (signedArea(r)>=0?outers:holes).push(r); }); if(outers.length===0){ outers=rings; holes=[]; } const polys=outers.map((o:any)=>[o]); holes.forEach((h:any)=>{ const c=centroid(h); let idx=0; for(let i=0;i<polys.length;i++){ if(pointInRing(c,polys[i][0])){ idx=i; break; } } polys[idx].push(h); }); return polys.length===1?{type:'Polygon',coordinates:polys[0]}:{type:'MultiPolygon',coordinates:polys}; }
+function esriToFeatures(data:any){ if(!data||!data.features) return []; return data.features.map((ft:any)=>{ let geom=null; if(ft.geometry&&ft.geometry.rings){ geom=ringsToGeoJSON(ft.geometry.rings); } return {type:'Feature',properties:ft.attributes||{},geometry:geom}; }).filter((f:any)=>f.geometry); }
+function normalize(attrs:any, src:any){ const n:any={src:src}; n.pin=pick(attrs,src.f.pin); n.owner=pick(attrs,src.f.owner); n.owner2=pick(attrs,src.f.owner2); n.address=pick(attrs,src.f.address); n.mail=pick(attrs,src.f.mail); n.subdiv=pick(attrs,src.f.subdiv); n.lot=pick(attrs,src.f.lot); n.acres=pick(attrs,src.f.acres); n.zoning=pick(attrs,src.f.zoning); n.assr=pick(attrs,src.f.assr); n.tpad=pick(attrs,src.f.tpad); const gm=(n.tpad.match(/gislink=([^&]+)/)||[])[1]; n.gislink=gm?decodeURIComponent(gm):pick(attrs,src.f.gislinkf); n.deedBook=pick(attrs,src.f.deedBook); n.deedPage=pick(attrs,src.f.deedPage); n.legalref=pick(attrs,src.f.legalref); n.deedref=pick(attrs,src.f.deedref); n.state=src.state; n.county=src.county||pick(attrs,[src.countyField]); if(n.county) n.county=n.county.toUpperCase().replace(/ COUNTY$/,'').trim(); return n; }
+function parseBookPage(n:any){ if(n.deedBook&&n.deedPage&&/\d/.test(n.deedBook)&&/\d/.test(n.deedPage)) return {book:n.deedBook.replace(/[^0-9A-Za-z]/g,''),page:n.deedPage.replace(/[^0-9A-Za-z]/g,'')}; const ref=n.legalref||''; const m=ref.match(/^\s*([0-9A-Za-z]+)\s*[-\/]\s*([0-9A-Za-z]+)\s*$/); if(m) return {book:m[1],page:m[2]}; return null; }
+function tsNameUrl(owner:string){ const name=(owner||'').split(',')[0].trim(); return TS_BASE+'nameSearch.php?'+qs({nameType:'2',searchType:'PA',indexType:'BOTH',p1:name,p2:'',expandAll:'on',startDate:'',endDate:'',itype:'0',executeSearch:'Execute Search'}); }
+function tsBookPageUrl(bp:any){ return TS_BASE+'bookPageSearch.php?'+qs({book:bp.book,page:bp.page,fileNumber:'',executeSearch:'Execute Search'}); }
+function outFieldsFor(s:any){ const set:any={}; ['pin','owner','owner2','address','mail','subdiv','lot','acres','zoning','assr','tpad','gislinkf','deedBook','deedPage','legalref','deedref'].forEach((k)=>{ (s.f[k]||[]).forEach((fn:string)=>{ set[fn]=1; }); }); if(s.countyField) set[s.countyField]=1; return Object.keys(set).join(',')||'*'; }
+function bboxIntersect(a:any,b:any){ return !(b[0]>a[2]||b[2]<a[0]||b[1]>a[3]||b[3]<a[1]); }
+
+export interface IPropertyDeedMapWebPartProps { title: string; workerUrl: string; }
+
+export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPropertyDeedMapWebPartProps> {
+  private map:any; private parcelLayer:any; private hiLayer:any; private labels:any; private bases:any;
+  private POP:any = {}; private pseq=0;
+  private inflight:any[] = []; private loadTimer:any = null;
+
+  protected onInit(): Promise<void> {
+    if (!document.getElementById('dls-leaflet-css')) {
+      const st = document.createElement('style'); st.id='dls-leaflet-css'; st.textContent = LEAFLET_CSS; document.head.appendChild(st);
+    }
+    // ONE delegated listener for popup buttons (data-act). domElement persists across renders.
+    this.domElement.addEventListener('click', (e:any) => {
+      const t = e.target && e.target.closest ? e.target.closest('[data-act]') : null;
+      if (!t) return;
+      e.preventDefault();
+      this.onAct(t.getAttribute('data-act'), t.getAttribute('data-id'), t.getAttribute('data-arg'));
+    });
+    return Promise.resolve();
+  }
+
+  private get workerUrl(): string { return this.properties.workerUrl || 'https://dls-deed.alex-564.workers.dev/'; }
+
+  public render(): void {
+    this.domElement.innerHTML = `
+      <style>
+        .dls-pm{font-family:'Segoe UI',Arial,sans-serif;color:#0f172a;}
+        .dls-pm .bar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:#1f2a37;color:#fff;padding:7px 10px;border-radius:8px 8px 0 0;border-bottom:3px solid #f59e0b;}
+        .dls-pm .bar strong{font-size:14px;}
+        .dls-pm select,.dls-pm input{font-size:12.5px;padding:5px 7px;border:1px solid #3b4a5e;border-radius:5px;background:#fff;color:#0f172a;}
+        .dls-pm #q{width:210px;}
+        .dls-pm button{cursor:pointer;border:1px solid #3b4a5e;border-radius:5px;background:#f59e0b;color:#1a1205;font-weight:600;padding:5px 10px;font-size:12.5px;}
+        .dls-pm button.ghost{background:#33445a;color:#fff;}
+        .dls-pm .sp{flex:1;}
+        .dls-pm #status{font-size:11px;color:#9fb0c3;white-space:nowrap;}
+        .dls-pm .stage{position:relative;}
+        .dls-pm #map{height:640px;border:1px solid #e5e7eb;border-top:none;border-radius:0 0 8px 8px;}
+        .dls-pm #results{position:absolute;z-index:1000;top:8px;left:8px;width:290px;max-height:75%;overflow:auto;background:#fff;border:1px solid #cbd5e1;border-radius:8px;box-shadow:0 6px 20px rgba(0,0,0,.18);display:none;}
+        .dls-pm #results h4{margin:0;padding:8px 10px;background:#1f2a37;color:#fff;font-size:12px;border-radius:8px 8px 0 0;display:flex;justify-content:space-between;}
+        .dls-pm #results h4 .x{cursor:pointer;color:#cbd5e1;font-weight:700;}
+        .dls-pm .rrow{padding:7px 10px;border-bottom:1px solid #eef2f7;cursor:pointer;font-size:12px;}
+        .dls-pm .rrow:hover{background:#fff7ec;} .dls-pm .rrow b{display:block;} .dls-pm .rrow span{color:#64748b;}
+        .dls-pm #legend{position:absolute;z-index:900;bottom:14px;left:8px;background:rgba(255,255,255,.94);border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:11px;max-width:260px;}
+        .dls-pm .src{color:#64748b;} .dls-pm .disc{font-size:10px;color:#64748b;margin-top:6px;border-top:1px dashed #cbd5e1;padding-top:4px;}
+        .lp h3{margin:0 0 4px;font-size:14px;} .lp .co{color:#64748b;font-size:11px;margin-bottom:6px;}
+        .lp table{border-collapse:collapse;font-size:12px;margin-bottom:6px;} .lp td{padding:1px 6px 1px 0;vertical-align:top;} .lp td.k{color:#64748b;white-space:nowrap;}
+        .lp .deed{border-top:1px solid #e2e8f0;padding-top:6px;margin-top:2px;} .lp .deed .lbl{font-size:11px;color:#64748b;margin-bottom:3px;}
+        .lp a.btn,.lp button.cp{display:inline-block;font-size:11px;font-weight:600;text-decoration:none;border-radius:5px;padding:4px 8px;margin:2px 3px 2px 0;border:1px solid #cbd5e1;cursor:pointer;}
+        .lp a.ts{background:#16a34a;color:#fff;border-color:transparent;} .lp a.ts.payg{background:#d97706;}
+        .lp a.us{background:#0369a1;color:#fff;border-color:transparent;} .lp a.assr{background:#475569;color:#fff;border-color:transparent;}
+        .lp button.cp{background:#f1f5f9;} .lp .note{font-size:10px;color:#64748b;margin-top:4px;}
+        .badge{display:inline-block;padding:1px 6px;border-radius:9px;font-size:10px;font-weight:700;color:#fff;}
+        .b-ok{background:#16a34a;} .b-warn{background:#d97706;}
+        .leaflet-popup-content{margin:10px 12px;max-width:280px;}
+      </style>
+      <div class="dls-pm">
+        <div class="bar">
+          <strong>${esc(this.properties.title) || 'DLS Property &amp; Deed Map'}</strong>
+          <select id="area" title="Dataset to search / jump to"></select>
+          <select id="mode"><option value="owner">Owner</option><option value="address">Address</option><option value="parcel">Parcel ID</option></select>
+          <input id="q" placeholder="Search owner name&hellip;" />
+          <button id="go">Search</button>
+          <button id="clear" class="ghost">Clear</button>
+          <span class="sp"></span>
+          <select id="base"><option value="aerial">Aerial</option><option value="streets">Streets</option><option value="topo">Topo</option></select>
+          <span id="status">Loading&hellip;</span>
+        </div>
+        <div class="stage">
+          <div id="map"></div>
+          <div id="results"><h4><span id="rtitle">Results</span><span class="x" id="rclose">&times;</span></h4><div id="rlist"></div></div>
+          <div id="legend"><b>Parcels load at zoom ${MINZOOM}+</b> &mdash; pan/zoom to your area.<br/><span class="src" id="legsrc">Active data: &mdash;</span><div class="disc">Reference only &mdash; not a boundary survey, title opinion, or zoning determination. Parcel &amp; owner data are pulled live from each assessor and may lag.</div></div>
+        </div>
+      </div>`;
+
+    const $ = (s:string)=>this.domElement.querySelector(s) as any;
+    const areaSel = $('#area');
+    SOURCES.forEach((s)=>{ const o=document.createElement('option'); o.value=s.id; o.textContent=s.label; areaSel.appendChild(o); });
+    $('#mode').onchange = (e:any)=>{ const p:any={owner:'Search owner name…',address:'Search street address…',parcel:'Search parcel ID…'}; $('#q').placeholder=p[e.target.value]; };
+    $('#go').onclick = ()=>this.runSearch();
+    $('#q').addEventListener('keydown',(e:any)=>{ if(e.key==='Enter') this.runSearch(); });
+    $('#clear').onclick = ()=>{ this.hiLayer.clearLayers(); $('#results').style.display='none'; };
+    $('#rclose').onclick = ()=>{ $('#results').style.display='none'; };
+    $('#base').onchange = (e:any)=>this.setBase(e.target.value);
+
+    this.buildMap();
+  }
+
+  private buildMap(): void {
+    const mapEl = this.domElement.querySelector('#map');
+    this.map = L.map(mapEl,{minZoom:6,maxZoom:20}).setView([36.521,-86.029],13);
+    this.bases = {
+      aerial: L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',{maxZoom:20,attribution:'Imagery © Esri'}),
+      streets: L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}',{maxZoom:20,attribution:'© Esri'}),
+      topo: L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}',{maxZoom:20,attribution:'© Esri'})
+    };
+    this.bases.aerial.addTo(this.map);
+    this.labels = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}',{maxZoom:20,opacity:.9}).addTo(this.map);
+    this.parcelLayer = L.geoJSON(null,{ style:()=>({color:'#ffd24d',weight:1,fillColor:'#000',fillOpacity:0.001}), onEachFeature:(ft:any,layer:any)=>this.onFeat(ft,layer) }).addTo(this.map);
+    this.hiLayer = L.geoJSON(null,{ style:{color:'#ff2d55',weight:3,fill:false} }).addTo(this.map);
+    this.map.on('moveend',()=>{ clearTimeout(this.loadTimer); this.loadTimer=setTimeout(()=>this.loadParcels(),250); });
+    this.setStatus('Pan/zoom to your area — parcels load at zoom '+MINZOOM+'+');
+    setTimeout(()=>this.loadParcels(),400);
+  }
+
+  private setBase(v:string): void {
+    Object.keys(this.bases).forEach((k)=>this.map.removeLayer(this.bases[k]));
+    this.bases[v].addTo(this.map);
+    if(v==='aerial') this.labels.addTo(this.map); else this.map.removeLayer(this.labels);
+  }
+
+  private activeSources(): any[] {
+    const b=this.map.getBounds(); const vb=[b.getWest(),b.getSouth(),b.getEast(),b.getNorth()];
+    return SOURCES.filter((s)=>bboxIntersect(vb,s.bbox));
+  }
+
+  private loadParcels(): void {
+    this.inflight.forEach((c)=>{ try{c.abort();}catch(e){} }); this.inflight=[];
+    const legsrc = this.domElement.querySelector('#legsrc') as any;
+    if(this.map.getZoom()<MINZOOM){ this.parcelLayer.clearLayers(); this.setStatus('Zoom in to load parcels (zoom ≥ '+MINZOOM+')'); if(legsrc) legsrc.textContent='Active data: —'; return; }
+    const srcs=this.activeSources();
+    if(srcs.length===0){ this.parcelLayer.clearLayers(); this.setStatus('No parcel source covers this view'); return; }
+    if(legsrc) legsrc.textContent='Active data: '+srcs.map((s)=>s.label.replace(/^..? — /,'')).join(', ');
+    const b=this.map.getBounds(); const env=[b.getWest(),b.getSouth(),b.getEast(),b.getNorth()].join(',');
+    this.setStatus('Loading parcels…'); this.parcelLayer.clearLayers();
+    let got=0, done=0; const errs:string[]=[];
+    srcs.forEach((s)=>{
+      const ctrl=new AbortController(); this.inflight.push(ctrl);
+      const url=s.url+'?'+qs({where:s.where||'1=1',geometry:env,geometryType:'esriGeometryEnvelope',inSR:4326,spatialRel:'esriSpatialRelIntersects',outFields:outFieldsFor(s),returnGeometry:true,outSR:4326,resultRecordCount:2000,f:'json'});
+      fetch(url,{signal:ctrl.signal}).then((r)=>r.json()).then((d:any)=>{
+        if(d.error) throw new Error(d.error.message||'service error');
+        const feats=esriToFeatures(d); feats.forEach((f:any)=>{ f.properties.__src=s.id; });
+        this.parcelLayer.addData(feats); got+=feats.length;
+      }).catch((e:any)=>{ if(e.name!=='AbortError') errs.push(s.label.replace(/^..? — /,'')+' ('+e.message+')'); })
+        .then(()=>{ done++; if(done===srcs.length) this.setStatus(got+' parcels'+(errs.length?'  · unavailable: '+errs.join('; '):'')); });
+    });
+  }
+
+  private onFeat(feat:any, layer:any): void {
+    layer.on('click',()=>{ const src=SOURCES.filter((s)=>s.id===feat.properties.__src)[0]||SOURCES[0]; const n=normalize(feat.properties,src); layer.bindPopup(this.popupHtml(n),{maxWidth:300}).openPopup(); });
+  }
+
+  private popupHtml(n:any): string {
+    const id='_p'+(this.pseq++); this.POP[id]=n;
+    let rows='';
+    const row=(k:string,v:any)=>{ if(v) rows+='<tr><td class="k">'+k+'</td><td>'+esc(v)+'</td></tr>'; };
+    let owner=n.owner+(n.owner2?'; '+n.owner2:'');
+    if(n.src.ownerWithheld && !owner) owner='<i>(owner not published by county)</i>';
+    rows+='<tr><td class="k">Owner</td><td>'+(owner||'—')+'</td></tr>';
+    row('Address',n.address); row('Parcel',n.pin);
+    if(n.acres) row('Acres', (+n.acres? (+n.acres).toFixed(2):n.acres));
+    if(n.subdiv) row('Subdiv', n.subdiv+(n.lot?'  Lot '+n.lot:''));
+    if(n.zoning) row('Zoning', n.zoning);
+    if(n.deedBook||n.deedPage) row('Deed','Bk '+n.deedBook+' Pg '+n.deedPage);
+    else if(n.legalref) row('Deed ref', n.legalref);
+    else if(n.deedref) row('Deed ref', n.deedref);
+    return '<div class="lp"><h3>'+esc(n.county||'')+(n.state?', '+n.state:'')+'</h3><div class="co">'+esc(n.src.label)+'</div><table>'+rows+'</table>'+this.deedSection(n,id)+'</div>';
+  }
+
+  private deedSection(n:any, id:string): string {
+    let out='<div class="deed"><div class="lbl">Deed records</div>';
+    const e=this.POP[id]; e.owner=n.owner; e.gislink=n.gislink; e.county=n.county;
+    const tsInfo = n.state==='TN' ? TS_TN[n.county] : null;
+    const isUS = n.state==='TN' && US_TN[n.county];
+    e.tsCnum = tsInfo ? tsInfo.c : null;
+    e.localBP = parseBookPage(n);
+    e.site = isUS ? 'US' : (tsInfo ? 'TS' : null);
+    if(e.site==='TS'){
+      const sub = tsInfo.sub===true;
+      const badge = sub ? '<span class="badge b-ok">included</span>' : '<span class="badge b-warn">pay-per-use</span>';
+      out+='<a class="btn ts'+(sub?'':' payg')+'" href="#" data-act="deedGo" data-id="'+id+'">Deed search &rarr; TitleSearcher: '+esc(n.county)+'</a> '+badge;
+      out+='<div class="note">'+(((e.gislink&&this.workerUrl)||e.localBP)?'Pulls the latest warranty-deed book/page automatically, then searches; ':'')+'falls back to owner-name search. In results, pick the WD row matching the owner.</div>';
+    } else if(e.site==='US'){
+      out+='<a class="btn us" href="#" data-act="deedGoUS" data-id="'+id+'">Deed search &rarr; US Title Search: '+esc(n.county)+'</a>';
+      out+='<div class="note">Opens US Title Search (your session) and surfaces the latest warranty-deed book/page to enter — that site has no direct deep-link.</div>';
+    } else if(n.state==='TN'){
+      out+='<span class="note">No deed site mapped for '+esc(n.county)+' — use the assessor link.</span><br/>';
+    } else if(n.state==='KY'){
+      out+='<a class="btn ts payg" href="'+TS_BASE+'countySelect.php" target="_blank" rel="noopener">TitleSearcher (KY) · pick county</a> <span class="note">KY not yet mapped</span><br/>';
+    }
+    out+='<div style="margin-top:5px">';
+    if(n.owner) out+='<button class="cp" data-act="cpf" data-id="'+id+'" data-arg="owner">Copy owner</button>';
+    if(n.pin) out+='<button class="cp" data-act="cpf" data-id="'+id+'" data-arg="pin">Copy parcel</button>';
+    if(e.site==='TS' && n.owner) out+='<button class="cp" data-act="deedName" data-id="'+id+'">Name search</button>';
+    out+='</div>';
+    if(n.assr) out+='<a class="btn assr" href="'+esc(n.assr)+'" target="_blank" rel="noopener">Assessor record</a> ';
+    else if(n.state==='TN') out+='<a class="btn assr" href="https://assessment.cot.tn.gov/RE_Assessment/" target="_blank" rel="noopener">TN assessment</a> ';
+    return out+'</div>';
+  }
+
+  private onAct(act:string, id:string, arg:string): void {
+    if(act==='deedGo') this.deedGo(id);
+    else if(act==='deedName') this.deedName(id);
+    else if(act==='deedGoUS') this.deedGoUS(id);
+    else if(act==='cpf'){ const e=this.POP[id]; if(e) this.copyText(e[arg]||''); }
+  }
+
+  private openDeferred(): any { const w=window.open('','_blank'); try{ if(w) w.document.write('<p style="font:14px/1.4 sans-serif;padding:18px;color:#333">Looking up the latest deed…</p>'); }catch(e){} return w; }
+  private tsCountyThen(w:any,cnum:string,url:string): void { if(!w) return; w.location=TS_BASE+'countySearchPage.php?cnum='+cnum; setTimeout(()=>{ try{w.location=url;}catch(e){} },1600); }
+
+  private deedGo(id:string): void {
+    const e=this.POP[id]; if(!e||!e.tsCnum) return;
+    const w=this.openDeferred();
+    const nameFallback=()=>this.tsCountyThen(w,e.tsCnum,tsNameUrl(e.owner||''));
+    if(e.localBP){ this.tsCountyThen(w,e.tsCnum,tsBookPageUrl(e.localBP)); return; }
+    if(e.gislink && this.workerUrl){
+      fetch(this.workerUrl+'?gislink='+encodeURIComponent(e.gislink)).then((r)=>r.json())
+        .then((d:any)=>{ if(d&&d.ok&&d.best&&d.best.book){ this.setStatus('Latest deed: '+(d.best.type||'')+' Bk '+d.best.book+' Pg '+d.best.page); this.tsCountyThen(w,e.tsCnum,tsBookPageUrl(d.best)); } else { this.setStatus('No book/page found — using owner-name search'); nameFallback(); } })
+        .catch(()=>nameFallback());
+    } else nameFallback();
+  }
+  private deedName(id:string): void { const e=this.POP[id]; if(!e||!e.tsCnum) return; this.tsCountyThen(this.openDeferred(),e.tsCnum,tsNameUrl(e.owner||'')); }
+  private deedGoUS(id:string): void {
+    const e=this.POP[id]; window.open(US_BASE,'_blank');
+    const show=(bp:any)=>{ this.setStatus('US Title Search · '+(e.county||'')+': Begin Search → Book/Page → Book '+bp.book+'  Page '+bp.page+(bp.type?'  ('+bp.type+')':'')); this.copyText(bp.book+' '+bp.page); };
+    if(e.localBP){ show(e.localBP); return; }
+    if(e.gislink && this.workerUrl){
+      fetch(this.workerUrl+'?gislink='+encodeURIComponent(e.gislink)).then((r)=>r.json())
+        .then((d:any)=>{ if(d&&d.ok&&d.best&&d.best.book) show(d.best); else this.setStatus('No book/page found — use name search in US Title Search'); })
+        .catch(()=>this.setStatus('Deed lookup unavailable — use name search in US Title Search'));
+    } else this.setStatus('Opened US Title Search → Begin Search.');
+  }
+  private copyText(txt:string): void { try{ if((navigator as any).clipboard) (navigator as any).clipboard.writeText(txt); }catch(e){} this.setStatus('Copied: '+txt); }
+
+  private runSearch(): void {
+    const $ = (s:string)=>this.domElement.querySelector(s) as any;
+    const src=SOURCES.filter((s)=>s.id===$('#area').value)[0]; const mode=$('#mode').value; const term=($('#q').value||'').trim();
+    if(term.length<2){ this.setStatus('Type at least 2 characters'); return; }
+    const field=src.search[mode];
+    if(!field){ this.setStatus(src.label+' has no '+mode+' field'); return; }
+    let where;
+    const sql=(x:string)=>x.replace(/'/g,"''");
+    if(mode==='parcel') where="UPPER("+field+") LIKE '"+sql(term.toUpperCase())+"%'";
+    else where=term.toUpperCase().split(/\s+/).map((t:string)=>"UPPER("+field+") LIKE '%"+sql(t)+"%'").join(' AND ');
+    if(src.where && src.where!=='1=1') where='('+src.where+') AND ('+where+')';
+    this.setStatus('Searching '+src.label.replace(/^..? — /,'')+'…');
+    const url=src.url+'?'+qs({where:where,outFields:outFieldsFor(src),returnGeometry:true,outSR:4326,resultRecordCount:60,f:'json'});
+    fetch(url).then((r)=>r.json()).then((d:any)=>{ if(d.error) throw new Error(d.error.message||'error'); const feats=esriToFeatures(d); feats.forEach((f:any)=>{ f.properties.__src=src.id; }); this.showResults(feats,src); })
+      .catch((e:any)=>this.setStatus('Search failed: '+e.message));
+  }
+
+  private showResults(feats:any[], src:any): void {
+    const box=this.domElement.querySelector('#results') as any; const list=this.domElement.querySelector('#rlist') as any;
+    (this.domElement.querySelector('#rtitle') as any).textContent=feats.length+' result'+(feats.length===1?'':'s');
+    list.innerHTML='';
+    if(feats.length===0){ list.innerHTML='<div class="rrow"><span>No matches.</span></div>'; box.style.display='block'; this.setStatus('No matches'); return; }
+    feats.forEach((f:any)=>{ const n=normalize(f.properties,src); const r=document.createElement('div'); r.className='rrow'; r.innerHTML='<b>'+esc(n.owner||n.address||n.pin||'(parcel)')+'</b><span>'+esc([n.address,n.pin].filter(Boolean).join(' · '))+'</span>'; r.onclick=()=>this.gotoFeature(f,n); list.appendChild(r); });
+    box.style.display='block'; this.setStatus(feats.length+' result(s)');
+  }
+
+  private gotoFeature(f:any, n:any): void {
+    this.hiLayer.clearLayers(); this.hiLayer.addData(f);
+    try{ this.map.fitBounds(this.hiLayer.getBounds(),{maxZoom:18,padding:[40,40]}); }catch(e){}
+    L.popup({maxWidth:300}).setLatLng(this.hiLayer.getBounds().getCenter()).setContent(this.popupHtml(n)).openOn(this.map);
+  }
+
+  private setStatus(t:string): void { const el=this.domElement.querySelector('#status'); if(el) el.textContent=t; }
+
+  protected get dataVersion(): Version { return Version.parse('1.0'); }
+  protected getPropertyPaneConfiguration(): IPropertyPaneConfiguration {
+    return { pages:[{ header:{description:'Property & Deed Map settings'}, groups:[{ groupName:'Settings', groupFields:[
+      PropertyPaneTextField('title',{label:'Title'}),
+      PropertyPaneTextField('workerUrl',{label:'Deed Worker URL (Cloudflare)'})
+    ]}]}]};
+  }
+}
