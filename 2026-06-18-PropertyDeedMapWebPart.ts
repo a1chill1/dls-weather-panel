@@ -298,6 +298,7 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
         .zp .spc-h{font-size:11px;margin-bottom:3px;color:#475569;} .zp .spc-h span{color:#0f172a;font-weight:700;margin-left:6px;}
         .zp .spc-g{display:flex;flex-wrap:wrap;gap:3px;}
         .zp .zbtns{border:1px solid #94a3b8;border-radius:4px;padding:3px 7px;font-size:10.5px;font-weight:700;color:#1a1205;cursor:pointer;}
+        .zp .zbnone{background:#f1f5f9 !important;color:#475569;font-weight:600;}
         .zp .zp-save{background:#16a34a;color:#fff;border:1px solid transparent;border-radius:5px;padding:4px 10px;font-size:11px;font-weight:600;cursor:pointer;}
         .znum{background:#1d4ed8 !important;color:#fff;border:none !important;border-radius:50%;width:18px !important;height:18px !important;line-height:18px;text-align:center;font-size:11px;font-weight:700;box-shadow:0 1px 3px rgba(0,0,0,.45);}
       </style>
@@ -439,7 +440,7 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
     if(n.acres) row('Acres', (+n.acres? (+n.acres).toFixed(2):n.acres));
     if(n.subdiv) row('Subdiv', n.subdiv+(n.lot?'  Lot '+n.lot:''));
     if(n.zoning) row('Zoning', n.zoning);
-    const zt=this.zoneByPin[pinKey(n.pin)]; if(zt){ const zj=jurById(zt.jur)||ZJURS[0]; if(zt.split&&zt.pieces){ row('Zone ('+(zt.jur||'')+')', zt.pieces.map((p:any)=>p.z).join(' / ')+' (split lot)'); } else { row('Zone ('+(zt.jur||'')+')', zt.zone+' — '+((zj.names&&zj.names[zt.zone])||'')+(zt.flood?' · Floodplain':'')); } }
+    const zt=this.zoneByPin[pinKey(n.pin)]; if(zt){ const zj=jurById(zt.jur)||ZJURS[0]; if(zt.split&&zt.pieces){ row('Zone ('+(zt.jur||'')+')', zt.pieces.map((p:any)=>p.z||'blank').join(' / ')+' (split lot)'); } else { row('Zone ('+(zt.jur||'')+')', zt.zone+' — '+((zj.names&&zj.names[zt.zone])||'')+(zt.flood?' · Floodplain':'')); } }
     if(n.deedBook||n.deedPage) row('Deed','Bk '+n.deedBook+' Pg '+n.deedPage);
     else if(n.legalref) row('Deed ref', n.legalref);
     else if(n.deedref) row('Deed ref', n.deedref);
@@ -620,7 +621,7 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
     if(!j){ this.setStatus('No zoning jurisdiction available to tag.'); return; }
     this.zTarget={pin:pin, raw:String(n.pin).trim(), jur:j.id, ll:ll, ring:outerRing(feat&&feat.geometry)};
     const cur=this.zoneByPin[pin];
-    const curTxt = cur? (cur.split&&cur.pieces? esc(cur.pieces.map((p:any)=>p.z).join(' / '))+' (split, '+esc(cur.jur)+')' : esc(cur.zone)+' ('+esc(cur.jur)+')'+(cur.flood?' + Floodplain':'')) : '—';
+    const curTxt = cur? (cur.split&&cur.pieces? esc(cur.pieces.map((p:any)=>p.z||'blank').join(' / '))+' (split, '+esc(cur.jur)+')' : esc(cur.zone)+' ('+esc(cur.jur)+')'+(cur.flood?' + Floodplain':'')) : '—';
     let g=''; j.zones.forEach((z:string)=>{ g+='<button class="zbtn" data-act="zset" data-arg="'+z+'" style="background:'+j.colors[z]+'">'+z+'<small>'+j.names[z]+'</small></button>'; });
     const html='<div class="zp"><div class="zp-h">Set zoning &middot; '+esc(j.name)+'</div>'
       +'<div class="zp-pin">Parcel: <b>'+esc(n.pin)+'</b></div>'
@@ -738,7 +739,8 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
     let body='';
     st.pieces.forEach((p:any,i:number)=>{
       let g=''; j.zones.forEach((z:string)=>{ g+='<button class="zbtns" data-act="zpz" data-arg="'+i+'|'+z+'" style="background:'+j.colors[z]+'">'+z+'</button>'; });
-      body+='<div class="spc"><div class="spc-h"><b>Piece '+(i+1)+'</b><span id="spc'+i+'">'+(p.z?esc(p.z):'&mdash;')+'</span></div><div class="spc-g">'+g+'</div></div>';
+      g+='<button class="zbtns zbnone" data-act="zpz" data-arg="'+i+'|-">None</button>';
+      body+='<div class="spc"><div class="spc-h"><b>Piece '+(i+1)+'</b><span id="spc'+i+'">'+(p.z?esc(p.z):'blank')+'</span></div><div class="spc-g">'+g+'</div></div>';
     });
     const html='<div class="zp"><div class="zp-h">Label split &middot; '+esc(j.name)+'</div>'+body
       +'<div style="margin-top:7px"><button class="zp-save" data-act="zsplitsave">Save split</button> <button class="zp-clear" data-act="zsplitcancel">Cancel</button></div>'
@@ -748,17 +750,18 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
 
   private setPieceZone(i:number, zone:string): void {
     const st=this.splitState; if(!st||!st.pieces[i]) return;
-    const j=jurById(st.jur); if(!j||j.zones.indexOf(zone)<0) return;
-    st.pieces[i].z=zone;
-    const sp=this.domElement.querySelector('#spc'+i) as any; if(sp) sp.textContent=zone;
+    if(zone==='-'){ st.pieces[i].z=null; }
+    else { const j=jurById(st.jur); if(!j||j.zones.indexOf(zone)<0) return; st.pieces[i].z=zone; }
+    const sp=this.domElement.querySelector('#spc'+i) as any; if(sp) sp.textContent=st.pieces[i].z||'blank';
     this.renderSplitPreview();
   }
 
   private saveSplit(): void {
     const st=this.splitState; if(!st) return;
-    for(let i=0;i<st.pieces.length;i++){ if(!st.pieces[i].z){ this.setStatus('Pick a zone for every piece first (piece '+(i+1)+' is blank).'); return; } }
-    const arr=st.pieces.map((p:any)=>({z:p.z, r:p.r})); const json=JSON.stringify(arr); const firstZone=arr[0].z;
-    const done=(id:number)=>{ this.zoneByPin[st.pin]={split:true,pieces:arr,zone:firstZone,flood:false,id:id,jur:st.jur}; this.splitState=null; this.clearSplitPreview(); this.buildSplitLayer(); this.restyleParcels(); this.setStatus('Saved split for '+st.raw+' ('+arr.map((p:any)=>p.z).join(' / ')+')'); this.map.closePopup(); };
+    let firstZone:any=null; for(let i=0;i<st.pieces.length;i++){ if(st.pieces[i].z){ firstZone=st.pieces[i].z; break; } }
+    if(!firstZone){ this.setStatus('Give at least one piece a zone (or use Clear to blank the whole lot).'); return; }
+    const arr=st.pieces.map((p:any)=>({z:p.z||null, r:p.r})); const json=JSON.stringify(arr);
+    const done=(id:number)=>{ this.zoneByPin[st.pin]={split:true,pieces:arr,zone:firstZone,flood:false,id:id,jur:st.jur}; this.splitState=null; this.clearSplitPreview(); this.buildSplitLayer(); this.restyleParcels(); this.setStatus('Saved split for '+st.raw+' ('+arr.map((p:any)=>p.z||'blank').join(' / ')+')'); this.map.closePopup(); };
     const body:any={Zone:firstZone, Jurisdiction:st.jur, SplitGeoJSON:json, Floodplain:false};
     if(st.id){ this.spPost(this.listApi()+'/items('+st.id+')', body, {'X-HTTP-Method':'MERGE','IF-MATCH':'*'}).then((r:any)=>{ if(r.status>=200&&r.status<300) done(st.id); else this.setStatus('Save failed ('+r.status+')'); }).catch((e:any)=>this.setStatus('Save failed: '+e)); }
     else { body.Title=st.raw; body.ParcelID=st.raw; this.spPost(this.listApi()+'/items', body).then((r:any)=>{ if(r.status>=200&&r.status<300) return r.json(); throw new Error('HTTP '+r.status); }).then((d:any)=>done(d&&d.Id)).catch((e:any)=>this.setStatus('Save failed: '+e)); }
@@ -771,7 +774,7 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
   private buildSplitLayer(): void {
     if(!this.splitLayer) return; this.splitLayer.clearLayers();
     if(!this.zoningView) return; const m=this.zoneByPin; const self=this;
-    Object.keys(m).forEach((pin)=>{ const z=m[pin]; if(z&&z.split&&z.pieces){ z.pieces.forEach((p:any)=>{ if(!p.r||p.r.length<3) return; const latlngs=p.r.map((c:any)=>[c[1],c[0]]); self.splitLayer.addLayer(L.polygon(latlngs,{color:'#6b5300',weight:1,fillColor:self.jurColor(z.jur,p.z),fillOpacity:0.55,interactive:false,pane:'zsplit'})); }); } });
+    Object.keys(m).forEach((pin)=>{ const z=m[pin]; if(z&&z.split&&z.pieces){ z.pieces.forEach((p:any)=>{ if(!p.z||!p.r||p.r.length<3) return; const latlngs=p.r.map((c:any)=>[c[1],c[0]]); self.splitLayer.addLayer(L.polygon(latlngs,{color:'#6b5300',weight:1,fillColor:self.jurColor(z.jur,p.z),fillOpacity:0.55,interactive:false,pane:'zsplit'})); }); } });
   }
 
   private setStatus(t:string): void { const el=this.domElement.querySelector('#status'); if(el) el.textContent=t; }
