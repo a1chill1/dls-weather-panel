@@ -157,7 +157,7 @@ const SOURCES: any[] = [
     search:{address:'ADDRESS',parcel:'PVA_PARCEL'} }
 ];
 
-const MINZOOM = 15;
+const MINZOOM = 13;
 
 // ---- Self-tagged zoning layer (reference only), jurisdiction-aware ----
 // Each entry = one adopted map: bounds [[S,W],[N,E]] + its OWN districts/colors/names.
@@ -216,7 +216,7 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
   private POP:any = {}; private pseq=0;
   private inflight:any[] = []; private loadTimer:any = null; private rzTimer:any = null;
   private loadedBounds:any = null; private loadedZoom:number = -1;
-  private zoneByPin:any = {}; private zoningView=false; private zoningEdit=false;
+  private zoneByPin:any = {}; private zoningView=true; private zoningEdit=false;
   private zTarget:any = null; private loadSeq=0; private tagJur:string='auto';
   private splitState:any=null; private splitLayer:any=null; private splitTmp:any[]=[]; private splitMarkers:any[]=[]; private _splitClick:any=null;
   private femaLayer:any=null; private _femaOn=false; private areasLayer:any=null; private _areasRenderer:any=null; private areas:any[]=[]; private _areasOn=false;
@@ -324,8 +324,8 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
           <button id="go">Search</button>
           <button id="clear" class="ghost">Clear</button>
           <span class="sp"></span>
-          <select id="base"><option value="aerial">Aerial</option><option value="streets">Streets</option><option value="topo">Topo</option></select>
-          <select id="zmode" title="RBS zoning layer"><option value="off">Zoning: Off</option><option value="view">Zoning: View</option><option value="edit">Zoning: Edit (tag lots)</option></select>
+          <select id="base"><option value="aerial">Aerial</option><option value="streets" selected>Streets</option><option value="topo">Topo</option></select>
+          <select id="zmode" title="Zoning layer (View / Edit)"><option value="off">Zoning: Off</option><option value="view" selected>Zoning: View</option><option value="edit">Zoning: Edit (tag lots)</option></select>
           <button id="fs" class="ghost" title="Full screen (Esc to exit)">Full screen</button>
           <span id="status">Loading&hellip;</span>
         </div>
@@ -350,6 +350,7 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
     $('#fs').onclick = ()=>this.toggleFs();
     this.buildMap();
     this.buildZPanel();
+    this.setZoningMode('view');   // default to Zoning: View with the side panel open
   }
 
   private buildMap(): void {
@@ -360,8 +361,8 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
       streets: L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}',{maxZoom:20,attribution:'© Esri'}),
       topo: L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}',{maxZoom:20,attribution:'© Esri'})
     };
-    this.bases.aerial.addTo(this.map);
-    this.labels = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}',{maxZoom:20,opacity:.9}).addTo(this.map);
+    this.bases.streets.addTo(this.map);
+    this.labels = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}',{maxZoom:20,opacity:.9});
     this.map.createPane('zoning'); this.map.getPane('zoning').style.zIndex='350'; this.map.getPane('zoning').style.pointerEvents='none';
     this.map.createPane('zsplit'); this.map.getPane('zsplit').style.zIndex='420'; this.map.getPane('zsplit').style.pointerEvents='none';
     this.splitLayer = L.layerGroup().addTo(this.map);
@@ -602,27 +603,19 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
 
   private buildZPanel(): void {
     const el=this.domElement.querySelector('#zlegend') as any; if(!el) return;
-    let h='<b>Zoning reference maps</b>';
+    let h='<b>Zoning</b>';
     h+='<div class="ztag">Tag lots as: <select id="ztagjur"><option value="auto">Auto-detect</option>';
     ZJURS.forEach((j:any)=>{ if(j.taggable) h+='<option value="'+j.id+'">'+esc(j.name)+'</option>'; });
     h+='</select></div>';
-    ZJURS.forEach((j:any)=>{
-      h+='<div class="zrow"><label><input type="checkbox" data-zov="'+j.id+'"'+(j._on?' checked':'')+'> '+j.name+'</label>'
-        +'<span class="zacc '+j.accuracy+'">'+j.accuracy+'</span>'
-        +'<input type="range" min="20" max="100" value="'+Math.round(j.opacity*100)+'" data-zop="'+j.id+'"></div>';
-    });
-    h+='<div class="zdiv"></div>';
     ZJURS.forEach((j:any)=>{ if(!j.taggable) return; h+='<div class="zjh">'+j.name+'</div>'; j.zones.forEach((z:string)=>{ h+='<div class="zi"><span class="zsw" style="background:'+j.colors[z]+'"></span>'+z+' &middot; '+j.names[z]+'</div>'; }); });
     h+='<div class="zdiv"></div><div class="zjh">Other layers</div>';
     h+='<div class="zrow"><label><input type="checkbox" id="zfema"'+(this._femaOn?' checked':'')+'> FEMA flood (NFHL)</label><span class="zacc exact">live</span><input type="range" min="20" max="100" value="'+(this.femaLayer&&this.femaLayer.options?Math.round(this.femaLayer.options.opacity*100):55)+'" id="zfemaop"></div>';
     h+='<div class="zrow"><label><input type="checkbox" id="zareas"'+(this._areasOn?' checked':'')+'> Drawn areas (historic dist.)</label></div>';
     h+='<button class="zbtn2" id="zdrawarea" style="margin-top:4px">Draw an area&hellip;</button>';
-    h+='<div class="zdisc">Lafayette &amp; Macon overlays are <b>approximate</b> &mdash; nudge opacity, use judgment near boundaries. Use "Tag lots as" to lock a jurisdiction for edge lots. FEMA flood is the official 1% layer. Confirm zoning with the city/county.</div>';
+    h+='<div class="zdisc">Tagged lots are colored by their district. Use "Tag lots as" to lock a jurisdiction for edge lots. FEMA flood is the official 1% layer. Confirm zoning with the city/county.</div>';
     el.innerHTML=h;
     const self=this;
     const ts=el.querySelector('#ztagjur') as any; if(ts){ ts.value=this.tagJur; ts.addEventListener('change',function(e:any){ self.tagJur=e.target.value; }); }
-    const cbs=el.querySelectorAll('[data-zov]'); for(let i=0;i<cbs.length;i++){ cbs[i].addEventListener('change',function(e:any){ const j=jurById(e.target.getAttribute('data-zov')); if(j){ j._on=!!e.target.checked; self.applyOverlays(); } }); }
-    const sls=el.querySelectorAll('[data-zop]'); for(let i=0;i<sls.length;i++){ sls[i].addEventListener('input',function(e:any){ const j=jurById(e.target.getAttribute('data-zop')); if(j&&j._layer){ j.opacity=(+e.target.value)/100; j._layer.setOpacity(j.opacity); } }); }
     const fm=el.querySelector('#zfema') as any; if(fm) fm.addEventListener('change',function(e:any){ self._femaOn=!!e.target.checked; self.applyFema(); });
     const fo=el.querySelector('#zfemaop') as any; if(fo) fo.addEventListener('input',function(e:any){ if(self.femaLayer) self.femaLayer.setOpacity((+e.target.value)/100); });
     const ar=el.querySelector('#zareas') as any; if(ar) ar.addEventListener('change',function(e:any){ self._areasOn=!!e.target.checked; self.buildAreasLayer(); });
