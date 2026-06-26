@@ -249,7 +249,7 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
   public render(): void {
     this.domElement.innerHTML = `
       <style>
-        .dls-pm{font-family:'Segoe UI',Arial,sans-serif;color:#0f172a;}
+        .dls-pm{font-family:'Segoe UI',Arial,sans-serif;color:#0f172a;width:98vw;position:relative;left:50%;margin-left:-49vw;box-sizing:border-box;}
         .dls-pm .bar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:#1f2a37;color:#fff;padding:7px 10px;border-radius:8px 8px 0 0;border-bottom:3px solid #f59e0b;}
         .dls-pm .bar strong{font-size:14px;}
         .dls-pm select,.dls-pm input{font-size:12.5px;padding:5px 7px;border:1px solid #3b4a5e;border-radius:5px;background:#fff;color:#0f172a;}
@@ -259,8 +259,8 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
         .dls-pm .sp{flex:1;}
         .dls-pm #status{font-size:11px;color:#9fb0c3;white-space:nowrap;}
         .dls-pm .stage{position:relative;}
-        .dls-pm #map{height:calc(100vh - 250px);min-height:500px;border:1px solid #e5e7eb;border-top:none;border-radius:0 0 8px 8px;}
-        .dls-pm.fs{position:fixed;inset:0;z-index:100000;background:#1f2a37;display:flex;flex-direction:column;border-radius:0;}
+        .dls-pm #map{height:calc(88vh - 220px);min-height:460px;border:1px solid #e5e7eb;border-top:none;border-radius:0 0 8px 8px;}
+        .dls-pm.fs{position:fixed;inset:0;left:0;margin-left:0;width:auto;z-index:100000;background:#1f2a37;display:flex;flex-direction:column;border-radius:0;}
         .dls-pm.fs .bar{border-radius:0;}
         .dls-pm.fs .stage{flex:1;min-height:0;}
         .dls-pm.fs #map{height:100% !important;min-height:0;border-radius:0;border:none;}
