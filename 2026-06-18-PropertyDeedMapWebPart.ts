@@ -185,6 +185,14 @@ function jurById(id:any){ for(let i=0;i<ZJURS.length;i++){ if(ZJURS[i].id===id) 
 function jurAt(ll:any){ let best:any=null, ba=Infinity; ZJURS.forEach((j:any)=>{ if(!j.taggable) return; const b=j.bounds; if(ll.lat>=b[0][0]&&ll.lat<=b[1][0]&&ll.lng>=b[0][1]&&ll.lng<=b[1][1]){ const area=(b[1][0]-b[0][0])*(b[1][1]-b[0][1]); if(area<ba){ ba=area; best=j; } } }); return best; }
 function nearestJur(ll:any){ let best:any=null, bd=Infinity; ZJURS.forEach((j:any)=>{ if(!j.taggable) return; const b=j.bounds; const cy=(b[0][0]+b[1][0])/2, cx=(b[0][1]+b[1][1])/2; const d=(ll.lat-cy)*(ll.lat-cy)+(ll.lng-cx)*(ll.lng-cx); if(d<bd){ bd=d; best=j; } }); return best; }
 
+// ---- straight-line parcel splitting (half-plane clipping; no library). Rings are [[lng,lat],...]. ----
+function ringOpen(r:any){ if(!r||r.length<2) return r||[]; const a=r.slice(); if(a.length>1 && a[0][0]===a[a.length-1][0] && a[0][1]===a[a.length-1][1]) a.pop(); return a; }
+function ringBounds(r:any){ let mnx=Infinity,mny=Infinity,mxx=-Infinity,mxy=-Infinity; for(let i=0;i<r.length;i++){ const p=r[i]; if(p[0]<mnx)mnx=p[0]; if(p[0]>mxx)mxx=p[0]; if(p[1]<mny)mny=p[1]; if(p[1]>mxy)mxy=p[1]; } return [mnx,mny,mxx,mxy]; }
+function sideOf(P:any,A:any,B:any){ return (B[0]-A[0])*(P[1]-A[1])-(B[1]-A[1])*(P[0]-A[0]); }
+function clipHalf(ring:any,A:any,B:any,keepPos:boolean){ const out:any[]=[]; const n=ring.length; for(let i=0;i<n;i++){ const cur=ring[i], nxt=ring[(i+1)%n]; const sc=sideOf(cur,A,B), sn=sideOf(nxt,A,B); const cin=keepPos?sc>=0:sc<=0, nin=keepPos?sn>=0:sn<=0; if(cin) out.push(cur); if(cin!==nin && (sc-sn)!==0){ const t=sc/(sc-sn); out.push([cur[0]+t*(nxt[0]-cur[0]), cur[1]+t*(nxt[1]-cur[1])]); } } return out; }
+function splitByLine(pieces:any,A:any,B:any){ const res:any[]=[]; for(let i=0;i<pieces.length;i++){ const r=ringOpen(pieces[i]); const a=clipHalf(r,A,B,false), b=clipHalf(r,A,B,true); if(a.length>=3) res.push(a); if(b.length>=3) res.push(b); } return res; }
+function outerRing(geom:any){ if(!geom) return null; if(geom.type==='Polygon') return ringOpen(geom.coordinates[0]); if(geom.type==='MultiPolygon'){ let best:any=null, ba=-1; for(let i=0;i<geom.coordinates.length;i++){ const r=geom.coordinates[i][0]; const b=ringBounds(r); const area=(b[2]-b[0])*(b[3]-b[1]); if(area>ba){ ba=area; best=r; } } return best?ringOpen(best):null; } return null; }
+
 // ---- module-scope pure helpers ----
 function esc(s: any): string { return (s==null?'':String(s)).replace(/[&<>"]/g, (c:string)=>(({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'} as any)[c])); }
 function qs(o: any): string { return Object.keys(o).map((k)=>encodeURIComponent(k)+'='+encodeURIComponent(o[k])).join('&'); }
@@ -210,6 +218,7 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
   private loadedBounds:any = null; private loadedZoom:number = -1;
   private zoneByPin:any = {}; private zoningView=false; private zoningEdit=false;
   private zTarget:any = null; private loadSeq=0; private tagJur:string='auto';
+  private splitState:any=null; private splitLayer:any=null; private splitTmp:any[]=[]; private splitMarkers:any[]=[]; private _splitClick:any=null;
 
   protected onInit(): Promise<void> {
     if (!document.getElementById('dls-leaflet-css')) {
@@ -282,6 +291,15 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
         .zp .zp-fl{display:flex;align-items:center;gap:6px;font-size:11.5px;margin:4px 0;cursor:pointer;}
         .zp .zp-clear{background:#f1f5f9;border:1px solid #cbd5e1;border-radius:5px;padding:4px 8px;font-size:11px;cursor:pointer;}
         .zp .zp-note{font-size:10px;color:#64748b;margin-top:5px;}
+        .zp .zbtn2{display:block;width:100%;text-align:left;border:1px solid #cbd5e1;border-radius:5px;padding:5px 7px;margin:3px 0;font-size:11.5px;background:#f8fafc;cursor:pointer;color:#0f172a;}
+        .zp .zbtn2:hover{background:#eef2f7;}
+        .zp .sp-opts{margin:4px 0;}
+        .zp .spc{border-top:1px solid #e2e8f0;padding-top:4px;margin-top:4px;}
+        .zp .spc-h{font-size:11px;margin-bottom:3px;color:#475569;} .zp .spc-h span{color:#0f172a;font-weight:700;margin-left:6px;}
+        .zp .spc-g{display:flex;flex-wrap:wrap;gap:3px;}
+        .zp .zbtns{border:1px solid #94a3b8;border-radius:4px;padding:3px 7px;font-size:10.5px;font-weight:700;color:#1a1205;cursor:pointer;}
+        .zp .zp-save{background:#16a34a;color:#fff;border:1px solid transparent;border-radius:5px;padding:4px 10px;font-size:11px;font-weight:600;cursor:pointer;}
+        .znum{background:#1d4ed8 !important;color:#fff;border:none !important;border-radius:50%;width:18px !important;height:18px !important;line-height:18px;text-align:center;font-size:11px;font-weight:700;box-shadow:0 1px 3px rgba(0,0,0,.45);}
       </style>
       <div class="dls-pm">
         <div class="bar">
@@ -329,6 +347,8 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
     this.bases.aerial.addTo(this.map);
     this.labels = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}',{maxZoom:20,opacity:.9}).addTo(this.map);
     this.map.createPane('zoning'); this.map.getPane('zoning').style.zIndex='350'; this.map.getPane('zoning').style.pointerEvents='none';
+    this.map.createPane('zsplit'); this.map.getPane('zsplit').style.zIndex='420'; this.map.getPane('zsplit').style.pointerEvents='none';
+    this.splitLayer = L.layerGroup().addTo(this.map);
     ZJURS.forEach((j:any)=>{ j._layer = L.imageOverlay(this.zoningAssetBase+j.file, j.bounds, {opacity:j.opacity, interactive:false, pane:'zoning'}); j._on = false; });
     this.parcelLayer = L.geoJSON(null,{ style:(ft:any)=>this.parcelStyle(ft), onEachFeature:(ft:any,layer:any)=>this.onFeat(ft,layer) }).addTo(this.map);
     this.hiLayer = L.geoJSON(null,{ style:{color:'#ff2d55',weight:3,fill:false} }).addTo(this.map);
@@ -399,10 +419,11 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
   private onFeat(feat:any, layer:any): void {
     // Standalone MAP popup (NOT bound to the parcel layer) so a parcel reload can't close it → no re-clicking.
     layer.on('click',(ev:any)=>{
+      if(this.splitState) return;
       const src=SOURCES.filter((s)=>s.id===feat.properties.__src)[0]||SOURCES[0];
       const n=normalize(feat.properties,src);
       const ll=(ev&&ev.latlng)||(layer.getBounds&&layer.getBounds().getCenter());
-      if(this.zoningEdit){ this.openZonePicker(n, ll); return; }
+      if(this.zoningEdit){ this.openZonePicker(n, ll, feat); return; }
       L.popup({maxWidth:300,autoPanPadding:[24,24]}).setLatLng(ll).setContent(this.popupHtml(n)).openOn(this.map);
     });
   }
@@ -418,7 +439,7 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
     if(n.acres) row('Acres', (+n.acres? (+n.acres).toFixed(2):n.acres));
     if(n.subdiv) row('Subdiv', n.subdiv+(n.lot?'  Lot '+n.lot:''));
     if(n.zoning) row('Zoning', n.zoning);
-    const zt=this.zoneByPin[pinKey(n.pin)]; if(zt){ const zj=jurById(zt.jur)||ZJURS[0]; row('Zone ('+(zt.jur||'')+')', zt.zone+' — '+((zj.names&&zj.names[zt.zone])||'')+(zt.flood?' · Floodplain':'')); }
+    const zt=this.zoneByPin[pinKey(n.pin)]; if(zt){ const zj=jurById(zt.jur)||ZJURS[0]; if(zt.split&&zt.pieces){ row('Zone ('+(zt.jur||'')+')', zt.pieces.map((p:any)=>p.z).join(' / ')+' (split lot)'); } else { row('Zone ('+(zt.jur||'')+')', zt.zone+' — '+((zj.names&&zj.names[zt.zone])||'')+(zt.flood?' · Floodplain':'')); } }
     if(n.deedBook||n.deedPage) row('Deed','Bk '+n.deedBook+' Pg '+n.deedPage);
     else if(n.legalref) row('Deed ref', n.legalref);
     else if(n.deedref) row('Deed ref', n.deedref);
@@ -463,6 +484,11 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
     else if(act==='cpf'){ const e=this.POP[id]; if(e) this.copyText(e[arg]||''); }
     else if(act==='zset') this.saveZone(arg);
     else if(act==='zclear') this.clearZone();
+    else if(act==='zsplitopen') this.startSplitMenu();
+    else if(act==='zsplit') this.beginSplit(arg);
+    else if(act==='zpz'){ const p=(arg||'').split('|'); this.setPieceZone(+p[0], p[1]); }
+    else if(act==='zsplitsave') this.saveSplit();
+    else if(act==='zsplitcancel') this.cancelSplit();
   }
 
   private openDeferred(): any { const w=window.open('','_blank'); try{ if(w) w.document.write('<p style="font:14px/1.4 sans-serif;padding:18px;color:#333">Looking up the latest deed…</p>'); }catch(e){} return w; }
@@ -535,16 +561,16 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
   }
 
   private loadZoning(): void {
-    this.spGet(this.listApi()+'/items?$select=Id,ParcelID,Zone,Floodplain,Jurisdiction&$top=5000').then((d:any)=>{
+    this.spGet(this.listApi()+'/items?$select=Id,ParcelID,Zone,Floodplain,Jurisdiction,SplitGeoJSON&$top=5000').then((d:any)=>{
       const items=(d&&d.value)||[]; const m:any={};
-      items.forEach((it:any)=>{ if(it.ParcelID&&it.Zone){ m[pinKey(it.ParcelID)]={zone:it.Zone,flood:!!it.Floodplain,id:it.Id,jur:it.Jurisdiction||'RBS'}; } });
-      this.zoneByPin=m; this.restyleParcels();
+      items.forEach((it:any)=>{ if(it.ParcelID&&it.Zone){ const e:any={zone:it.Zone,flood:!!it.Floodplain,id:it.Id,jur:it.Jurisdiction||'RBS'}; if(it.SplitGeoJSON){ try{ const arr=JSON.parse(it.SplitGeoJSON); if(arr&&arr.length){ e.split=true; e.pieces=arr; } }catch(x){} } m[pinKey(it.ParcelID)]=e; } });
+      this.zoneByPin=m; this.restyleParcels(); this.buildSplitLayer();
     }).catch(()=>{ /* list missing / no access — zoning just stays empty */ });
   }
 
   private featPin(ft:any): string { const src=SOURCES.filter((s)=>s.id===ft.properties.__src)[0]||SOURCES[0]; return pinKey(pick(ft.properties, src.f.pin)); }
   private parcelStyle(ft:any): any {
-    if(this.zoningView){ const z=this.zoneByPin[this.featPin(ft)]; if(z){ const j=jurById(z.jur)||ZJURS[0]; const c=(j.colors&&j.colors[z.zone])||'#888'; return {color:'#6b5300',weight:1,fillColor:c,fillOpacity:0.55}; } }
+    if(this.zoningView){ const z=this.zoneByPin[this.featPin(ft)]; if(z){ if(z.split) return {color:'#6b5300',weight:1,fillColor:'#000',fillOpacity:0.001}; const j=jurById(z.jur)||ZJURS[0]; const c=(j.colors&&j.colors[z.zone])||'#888'; return {color:'#6b5300',weight:1,fillColor:c,fillOpacity:0.55}; } }
     return {color:'#ffd24d',weight:1,fillColor:'#000',fillOpacity:0.001};
   }
   private restyleParcels(): void { try{ if(this.parcelLayer) this.parcelLayer.setStyle((ft:any)=>this.parcelStyle(ft)); }catch(e){} }
@@ -577,6 +603,7 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
     if(zl) zl.style.display = this.zoningView ? 'block' : 'none';
     this.applyOverlays();
     this.restyleParcels();
+    this.buildSplitLayer();
     if(v==='edit') this.setStatus('Zoning EDIT — set "Tag lots as" if needed, click a lot, choose its zone. Reference only.');
     else if(v==='view') this.setStatus('Zoning VIEW — tagged lots are colored by their district.');
     else this.setStatus('Zoning off.');
@@ -587,19 +614,20 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
     ZJURS.forEach((j:any)=>{ if(!j._layer) return; const show=this.zoningView && j._on; if(show){ if(!this.map.hasLayer(j._layer)){ j._layer.addTo(this.map); j._layer.bringToFront(); } } else if(this.map.hasLayer(j._layer)){ this.map.removeLayer(j._layer); } });
   }
 
-  private openZonePicker(n:any, ll:any): void {
+  private openZonePicker(n:any, ll:any, feat?:any): void {
     const pin=pinKey(n.pin); if(!pin){ this.setStatus('This parcel has no ID — cannot tag it.'); return; }
     const j = (this.tagJur && this.tagJur!=='auto') ? jurById(this.tagJur) : (jurAt(ll) || nearestJur(ll));
     if(!j){ this.setStatus('No zoning jurisdiction available to tag.'); return; }
-    this.zTarget={pin:pin, raw:String(n.pin).trim(), jur:j.id};
+    this.zTarget={pin:pin, raw:String(n.pin).trim(), jur:j.id, ll:ll, ring:outerRing(feat&&feat.geometry)};
     const cur=this.zoneByPin[pin];
+    const curTxt = cur? (cur.split&&cur.pieces? esc(cur.pieces.map((p:any)=>p.z).join(' / '))+' (split, '+esc(cur.jur)+')' : esc(cur.zone)+' ('+esc(cur.jur)+')'+(cur.flood?' + Floodplain':'')) : '—';
     let g=''; j.zones.forEach((z:string)=>{ g+='<button class="zbtn" data-act="zset" data-arg="'+z+'" style="background:'+j.colors[z]+'">'+z+'<small>'+j.names[z]+'</small></button>'; });
     const html='<div class="zp"><div class="zp-h">Set zoning &middot; '+esc(j.name)+'</div>'
       +'<div class="zp-pin">Parcel: <b>'+esc(n.pin)+'</b></div>'
-      +'<div class="zp-cur">Current: <b>'+(cur?esc(cur.zone)+' ('+esc(cur.jur)+')'+(cur.flood?' + Floodplain':''):'—')+'</b></div>'
+      +'<div class="zp-cur">Current: <b>'+curTxt+'</b></div>'
       +'<div class="zp-grid">'+g+'</div>'
       +'<label class="zp-fl"><input type="checkbox" id="zpFlood"'+(cur&&cur.flood?' checked':'')+'> In 1% floodplain</label>'
-      +'<button class="zp-clear" data-act="zclear">Clear zone</button>'
+      +'<div style="margin-top:4px"><button class="zp-clear" data-act="zsplitopen">Split lot&hellip;</button> <button class="zp-clear" data-act="zclear">Clear</button></div>'
       +'<div class="zp-note">'+esc(j.name)+(j.accuracy==='approx'?' overlay is approximate — verify boundary lots. ':' ')+'Reference only — not an official determination.</div></div>';
     L.popup({maxWidth:280,autoPanPadding:[24,24]}).setLatLng(ll).setContent(html).openOn(this.map);
   }
@@ -628,6 +656,122 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
     this.spPost(this.listApi()+'/items('+cur.id+')', null, {'X-HTTP-Method':'DELETE','IF-MATCH':'*'})
       .then((r:any)=>{ if(r.status>=200&&r.status<300){ delete this.zoneByPin[t.pin]; this.restyleParcels(); this.setStatus('Cleared zoning for '+t.raw); this.map.closePopup(); } else this.setStatus('Clear failed ('+r.status+')'); })
       .catch((e:any)=>this.setStatus('Clear failed: '+e));
+  }
+
+  // ======================= split-zoned lots =======================
+  private jurColor(jur:string, z:string): string { const j=jurById(jur)||ZJURS[0]; return (j.colors&&j.colors[z])||'#888'; }
+
+  private startSplitMenu(): void {
+    const t=this.zTarget; if(!t||!t.ring||t.ring.length<3){ this.setStatus('This lot has no usable shape to split.'); return; }
+    const jn=jurById(t.jur)?jurById(t.jur).name:t.jur;
+    const html='<div class="zp"><div class="zp-h">Split lot &middot; '+esc(jn)+'</div>'
+      +'<div class="zp-pin">Parcel: <b>'+esc(t.raw)+'</b></div>'
+      +'<div class="sp-opts">'
+      +'<button class="zbtn2" data-act="zsplit" data-arg="h2">Halve &mdash; top / bottom</button>'
+      +'<button class="zbtn2" data-act="zsplit" data-arg="v2">Halve &mdash; left / right</button>'
+      +'<button class="zbtn2" data-act="zsplit" data-arg="h3">Thirds &mdash; rows</button>'
+      +'<button class="zbtn2" data-act="zsplit" data-arg="v3">Thirds &mdash; columns</button>'
+      +'<button class="zbtn2" data-act="zsplit" data-arg="draw1">Draw 1 line &rarr; 2 parts</button>'
+      +'<button class="zbtn2" data-act="zsplit" data-arg="draw2">Draw 2 lines &rarr; 3 parts</button>'
+      +'</div><button class="zp-clear" data-act="zsplitcancel">Cancel</button>'
+      +'<div class="zp-note">Then pick a zone for each numbered part. Approximate &mdash; reference only.</div></div>';
+    L.popup({maxWidth:240,autoPanPadding:[24,24]}).setLatLng(t.ll||this.map.getCenter()).setContent(html).openOn(this.map);
+  }
+
+  private beginSplit(kind:string): void {
+    const t=this.zTarget; if(!t||!t.ring) return;
+    const id=this.zoneByPin[t.pin]?this.zoneByPin[t.pin].id:null;
+    this.splitState={pin:t.pin, raw:t.raw, jur:t.jur, id:id, rings:[ringOpen(t.ring)], pieces:[], pts:[], lines:0, ll:t.ll};
+    this.clearSplitPreview();
+    if(kind==='draw1'||kind==='draw2'){
+      this.splitState.lines=(kind==='draw2'?2:1);
+      this.setStatus('Cut 1: click two points on the map for the line.');
+      this._splitClick=(e:any)=>this.onSplitClick(e); this.map.on('click',this._splitClick);
+      L.popup({maxWidth:210,closeOnClick:false,autoClose:false}).setLatLng(t.ll||this.map.getCenter())
+        .setContent('<div class="zp"><div class="zp-h">Drawing cut line'+(this.splitState.lines>1?'s':'')+'</div><div class="zp-note">Click <b>two points</b> on the map for each line ('+this.splitState.lines+' line'+(this.splitState.lines>1?'s':'')+'). Each extends across the lot.</div><button class="zp-clear" data-act="zsplitcancel">Cancel</button></div>')
+        .openOn(this.map);
+      return;
+    }
+    const b=ringBounds(this.splitState.rings[0]); const eps=1e-4; let rings=this.splitState.rings;
+    if(kind==='h2'){ const cy=(b[1]+b[3])/2; rings=splitByLine(rings,[b[0]-eps,cy],[b[2]+eps,cy]); }
+    else if(kind==='v2'){ const cx=(b[0]+b[2])/2; rings=splitByLine(rings,[cx,b[1]-eps],[cx,b[3]+eps]); }
+    else if(kind==='h3'){ const y1=b[1]+(b[3]-b[1])/3,y2=b[1]+2*(b[3]-b[1])/3; rings=splitByLine(rings,[b[0]-eps,y1],[b[2]+eps,y1]); rings=splitByLine(rings,[b[0]-eps,y2],[b[2]+eps,y2]); }
+    else if(kind==='v3'){ const x1=b[0]+(b[2]-b[0])/3,x2=b[0]+2*(b[2]-b[0])/3; rings=splitByLine(rings,[x1,b[1]-eps],[x1,b[3]+eps]); rings=splitByLine(rings,[x2,b[1]-eps],[x2,b[3]+eps]); }
+    this.splitState.rings=rings; this.finishSplitGeometry();
+  }
+
+  private onSplitClick(e:any): void {
+    const st=this.splitState; if(!st) return;
+    st.pts.push([e.latlng.lng, e.latlng.lat]);
+    this.splitMarkers.push(L.circleMarker(e.latlng,{radius:4,color:'#1d4ed8',weight:2,fill:true,fillColor:'#1d4ed8',fillOpacity:1,pane:'zsplit',interactive:false}).addTo(this.map));
+    if(st.pts.length%2===0){
+      const A=st.pts[st.pts.length-2], B=st.pts[st.pts.length-1];
+      st.rings=splitByLine(st.rings, A, B);
+      this.splitMarkers.push(L.polyline([[A[1],A[0]],[B[1],B[0]]],{color:'#1d4ed8',weight:2,dashArray:'5,4',pane:'zsplit',interactive:false}).addTo(this.map));
+      const done=st.pts.length/2;
+      if(done>=st.lines){ if(this._splitClick){ this.map.off('click',this._splitClick); this._splitClick=null; } this.finishSplitGeometry(); }
+      else this.setStatus('Cut '+(done+1)+': click two points for the next line.');
+    }
+  }
+
+  private finishSplitGeometry(): void {
+    const st=this.splitState; if(!st) return;
+    if(!st.rings || st.rings.length<2){ this.setStatus('That line did not divide the lot — try again.'); this.cancelSplit(); return; }
+    st.pieces=st.rings.map((r:any)=>({r:r, z:null}));
+    this.renderSplitPreview(); this.openLabelPopup();
+  }
+
+  private renderSplitPreview(): void {
+    this.clearSplitPreview();
+    const st=this.splitState; if(!st) return;
+    st.pieces.forEach((p:any,i:number)=>{
+      const latlngs=p.r.map((c:any)=>[c[1],c[0]]);
+      const fill = p.z? this.jurColor(st.jur,p.z) : '#94a3b8';
+      this.splitTmp.push(L.polygon(latlngs,{color:'#1d4ed8',weight:2,dashArray:'4,3',fillColor:fill,fillOpacity:p.z?0.55:0.2,pane:'zsplit',interactive:false}).addTo(this.map));
+      const c=centroid(ringOpen(p.r));
+      this.splitMarkers.push(L.marker([c[1],c[0]],{pane:'zsplit',interactive:false,icon:L.divIcon({className:'znum',html:String(i+1),iconSize:[18,18]})}).addTo(this.map));
+    });
+  }
+
+  private openLabelPopup(): void {
+    const st=this.splitState; if(!st) return; const j=jurById(st.jur)||ZJURS[0];
+    let body='';
+    st.pieces.forEach((p:any,i:number)=>{
+      let g=''; j.zones.forEach((z:string)=>{ g+='<button class="zbtns" data-act="zpz" data-arg="'+i+'|'+z+'" style="background:'+j.colors[z]+'">'+z+'</button>'; });
+      body+='<div class="spc"><div class="spc-h"><b>Piece '+(i+1)+'</b><span id="spc'+i+'">'+(p.z?esc(p.z):'&mdash;')+'</span></div><div class="spc-g">'+g+'</div></div>';
+    });
+    const html='<div class="zp"><div class="zp-h">Label split &middot; '+esc(j.name)+'</div>'+body
+      +'<div style="margin-top:7px"><button class="zp-save" data-act="zsplitsave">Save split</button> <button class="zp-clear" data-act="zsplitcancel">Cancel</button></div>'
+      +'<div class="zp-note">Pick a zone for each numbered piece. Approximate &mdash; reference only.</div></div>';
+    L.popup({maxWidth:250,autoPanPadding:[24,24]}).setLatLng(st.ll||this.map.getCenter()).setContent(html).openOn(this.map);
+  }
+
+  private setPieceZone(i:number, zone:string): void {
+    const st=this.splitState; if(!st||!st.pieces[i]) return;
+    const j=jurById(st.jur); if(!j||j.zones.indexOf(zone)<0) return;
+    st.pieces[i].z=zone;
+    const sp=this.domElement.querySelector('#spc'+i) as any; if(sp) sp.textContent=zone;
+    this.renderSplitPreview();
+  }
+
+  private saveSplit(): void {
+    const st=this.splitState; if(!st) return;
+    for(let i=0;i<st.pieces.length;i++){ if(!st.pieces[i].z){ this.setStatus('Pick a zone for every piece first (piece '+(i+1)+' is blank).'); return; } }
+    const arr=st.pieces.map((p:any)=>({z:p.z, r:p.r})); const json=JSON.stringify(arr); const firstZone=arr[0].z;
+    const done=(id:number)=>{ this.zoneByPin[st.pin]={split:true,pieces:arr,zone:firstZone,flood:false,id:id,jur:st.jur}; this.splitState=null; this.clearSplitPreview(); this.buildSplitLayer(); this.restyleParcels(); this.setStatus('Saved split for '+st.raw+' ('+arr.map((p:any)=>p.z).join(' / ')+')'); this.map.closePopup(); };
+    const body:any={Zone:firstZone, Jurisdiction:st.jur, SplitGeoJSON:json, Floodplain:false};
+    if(st.id){ this.spPost(this.listApi()+'/items('+st.id+')', body, {'X-HTTP-Method':'MERGE','IF-MATCH':'*'}).then((r:any)=>{ if(r.status>=200&&r.status<300) done(st.id); else this.setStatus('Save failed ('+r.status+')'); }).catch((e:any)=>this.setStatus('Save failed: '+e)); }
+    else { body.Title=st.raw; body.ParcelID=st.raw; this.spPost(this.listApi()+'/items', body).then((r:any)=>{ if(r.status>=200&&r.status<300) return r.json(); throw new Error('HTTP '+r.status); }).then((d:any)=>done(d&&d.Id)).catch((e:any)=>this.setStatus('Save failed: '+e)); }
+  }
+
+  private cancelSplit(): void { if(this._splitClick){ this.map.off('click',this._splitClick); this._splitClick=null; } this.clearSplitPreview(); this.splitState=null; this.map.closePopup(); this.setStatus('Split cancelled.'); }
+
+  private clearSplitPreview(): void { const a=this.splitTmp||[]; for(let i=0;i<a.length;i++){ try{this.map.removeLayer(a[i]);}catch(e){} } this.splitTmp=[]; const m=this.splitMarkers||[]; for(let i=0;i<m.length;i++){ try{this.map.removeLayer(m[i]);}catch(e){} } this.splitMarkers=[]; }
+
+  private buildSplitLayer(): void {
+    if(!this.splitLayer) return; this.splitLayer.clearLayers();
+    if(!this.zoningView) return; const m=this.zoneByPin; const self=this;
+    Object.keys(m).forEach((pin)=>{ const z=m[pin]; if(z&&z.split&&z.pieces){ z.pieces.forEach((p:any)=>{ if(!p.r||p.r.length<3) return; const latlngs=p.r.map((c:any)=>[c[1],c[0]]); self.splitLayer.addLayer(L.polygon(latlngs,{color:'#6b5300',weight:1,fillColor:self.jurColor(z.jur,p.z),fillOpacity:0.55,interactive:false,pane:'zsplit'})); }); } });
   }
 
   private setStatus(t:string): void { const el=this.domElement.querySelector('#status'); if(el) el.textContent=t; }
