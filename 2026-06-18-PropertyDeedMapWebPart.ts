@@ -608,7 +608,7 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
     h+='<div class="zdiv"></div><div class="zjh">Other layers</div>';
     h+='<div class="zrow"><label><input type="checkbox" id="zfema"'+(this._femaOn?' checked':'')+'> FEMA flood (NFHL)</label><span class="zacc exact">live</span><input type="range" min="20" max="100" value="'+(this.femaLayer&&this.femaLayer.options?Math.round(this.femaLayer.options.opacity*100):55)+'" id="zfemaop"></div>';
     h+='<div class="zrow"><label><input type="checkbox" id="zareas"'+(this._areasOn?' checked':'')+'> Drawn areas (historic dist.)</label></div>';
-    if(this.zoningEdit) h+='<button class="zbtn2" id="zdrawarea" style="margin-top:4px">Draw an area&hellip;</button>';
+    h+='<button class="zbtn2" id="zdrawarea" style="margin-top:4px">Draw an area&hellip;</button>';
     h+='<div class="zdisc">Lafayette &amp; Macon overlays are <b>approximate</b> &mdash; nudge opacity, use judgment near boundaries. Use "Tag lots as" to lock a jurisdiction for edge lots. FEMA flood is the official 1% layer. Confirm zoning with the city/county.</div>';
     el.innerHTML=h;
     const self=this;
