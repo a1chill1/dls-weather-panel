@@ -19,6 +19,7 @@
 import { Version } from '@microsoft/sp-core-library';
 import { type IPropertyPaneConfiguration, PropertyPaneTextField } from '@microsoft/sp-property-pane';
 import { BaseClientSideWebPart } from '@microsoft/sp-webpart-base';
+import { SPHttpClient } from '@microsoft/sp-http';
 import * as LeafletNS from 'leaflet';
 
 const L: any = LeafletNS as any;
@@ -158,6 +159,16 @@ const SOURCES: any[] = [
 
 const MINZOOM = 15;
 
+// ---- RBS self-tagged zoning layer (reference only) ----
+// Districts + colors are from the adopted Red Boiling Springs Official Zoning Map.
+// Floodplain (1% annual-risk flood hazard) is a separate flag, not a district.
+const ZONES = ['R-1','R-2','C-1','C-2','C-3','I-1'];
+const ZONE_COLORS: any = { 'R-1':'#FBE10A','R-2':'#F2A23B','C-1':'#F4B0A0','C-2':'#F07F86','C-3':'#E8332E','I-1':'#B7B7B7' };
+const ZONE_NAMES: any = { 'R-1':'Low Density Residential','R-2':'High Density Residential','C-1':'Central Business','C-2':'General Commercial','C-3':'Highway Commercial','I-1':'General Industrial' };
+// Leaflet imageOverlay bounds: [[south,west],[north,east]] — RBS georef is exact (from the 2026-06-17 zoning work).
+const RBS_BOUNDS: any = [[36.51467,-85.87444],[36.54963,-85.831]];
+function pinKey(s:any){ return (s==null?'':String(s)).toUpperCase().replace(/\s+/g,' ').trim(); }
+
 // ---- module-scope pure helpers ----
 function esc(s: any): string { return (s==null?'':String(s)).replace(/[&<>"]/g, (c:string)=>(({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'} as any)[c])); }
 function qs(o: any): string { return Object.keys(o).map((k)=>encodeURIComponent(k)+'='+encodeURIComponent(o[k])).join('&'); }
@@ -174,13 +185,15 @@ function tsBookPageUrl(bp:any){ return TS_BASE+'bookPageSearch.php?'+qs({book:bp
 function outFieldsFor(s:any){ const set:any={}; ['pin','owner','owner2','address','mail','subdiv','lot','acres','zoning','assr','tpad','gislinkf','deedBook','deedPage','legalref','deedref'].forEach((k)=>{ (s.f[k]||[]).forEach((fn:string)=>{ set[fn]=1; }); }); if(s.countyField) set[s.countyField]=1; return Object.keys(set).join(',')||'*'; }
 function bboxIntersect(a:any,b:any){ return !(b[0]>a[2]||b[2]<a[0]||b[1]>a[3]||b[3]<a[1]); }
 
-export interface IPropertyDeedMapWebPartProps { title: string; workerUrl: string; }
+export interface IPropertyDeedMapWebPartProps { title: string; workerUrl: string; zoneListTitle: string; zoningAssetUrl: string; }
 
 export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPropertyDeedMapWebPartProps> {
   private map:any; private parcelLayer:any; private hiLayer:any; private labels:any; private bases:any;
   private POP:any = {}; private pseq=0;
   private inflight:any[] = []; private loadTimer:any = null; private rzTimer:any = null;
   private loadedBounds:any = null; private loadedZoom:number = -1;
+  private zoneByPin:any = {}; private zoningView=false; private zoningEdit=false;
+  private zTarget:any = null; private zOverlay:any = null;
 
   protected onInit(): Promise<void> {
     if (!document.getElementById('dls-leaflet-css')) {
@@ -197,6 +210,8 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
   }
 
   private get workerUrl(): string { return this.properties.workerUrl || 'https://dls-deed.alex-564.workers.dev/'; }
+  private get zoneListTitle(): string { return this.properties.zoneListTitle || 'DLS Zoning Assignments'; }
+  private get zoningAssetUrl(): string { return this.properties.zoningAssetUrl || (this.context.pageContext.web.absoluteUrl + '/SiteAssets/zoning/rbs_zoning_overlay.webp'); }
 
   public render(): void {
     this.domElement.innerHTML = `
@@ -229,6 +244,19 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
         .badge{display:inline-block;padding:1px 6px;border-radius:9px;font-size:10px;font-weight:700;color:#fff;}
         .b-ok{background:#16a34a;} .b-warn{background:#d97706;}
         .leaflet-popup-content{margin:10px 12px;max-width:280px;}
+        .dls-pm #zmode{background:#33445a;color:#fff;}
+        .dls-pm #zlegend{position:absolute;z-index:900;bottom:14px;right:8px;background:rgba(255,255,255,.95);border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:11px;max-width:215px;display:none;}
+        .dls-pm #zlegend b{font-size:11.5px;} .dls-pm #zlegend .zi{display:flex;align-items:center;gap:6px;margin:3px 0;}
+        .dls-pm #zlegend .zsw{width:13px;height:13px;border-radius:3px;border:1px solid rgba(0,0,0,.3);flex:none;}
+        .dls-pm #zlegend .zdisc{margin-top:5px;border-top:1px dashed #cbd5e1;padding-top:4px;color:#64748b;}
+        .zp{font-family:'Segoe UI',Arial,sans-serif;min-width:212px;} .zp .zp-h{font-weight:700;font-size:13px;margin-bottom:2px;}
+        .zp .zp-pin,.zp .zp-cur{font-size:11px;color:#475569;} .zp .zp-cur{margin-bottom:6px;}
+        .zp .zp-grid{display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-bottom:6px;}
+        .zp .zbtn{border:1px solid #94a3b8;border-radius:5px;padding:5px 6px;font-size:11px;font-weight:700;cursor:pointer;color:#1a1205;text-align:left;}
+        .zp .zbtn small{display:block;font-weight:400;font-size:9px;color:#334155;line-height:1.15;margin-top:1px;}
+        .zp .zp-fl{display:flex;align-items:center;gap:6px;font-size:11.5px;margin:4px 0;cursor:pointer;}
+        .zp .zp-clear{background:#f1f5f9;border:1px solid #cbd5e1;border-radius:5px;padding:4px 8px;font-size:11px;cursor:pointer;}
+        .zp .zp-note{font-size:10px;color:#64748b;margin-top:5px;}
       </style>
       <div class="dls-pm">
         <div class="bar">
@@ -240,12 +268,14 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
           <button id="clear" class="ghost">Clear</button>
           <span class="sp"></span>
           <select id="base"><option value="aerial">Aerial</option><option value="streets">Streets</option><option value="topo">Topo</option></select>
+          <select id="zmode" title="RBS zoning layer"><option value="off">Zoning: Off</option><option value="view">Zoning: View</option><option value="edit">Zoning: Edit (tag lots)</option></select>
           <span id="status">Loading&hellip;</span>
         </div>
         <div class="stage">
           <div id="map"></div>
           <div id="results"><h4><span id="rtitle">Results</span><span class="x" id="rclose">&times;</span></h4><div id="rlist"></div></div>
           <div id="legend"><b>Parcels load at zoom ${MINZOOM}+</b> &mdash; pan/zoom to your area.<br/><span class="src" id="legsrc">Active data: &mdash;</span><div class="disc">Reference only &mdash; not a boundary survey, title opinion, or zoning determination. Parcel &amp; owner data are pulled live from each assessor and may lag.</div></div>
+          <div id="zlegend"></div>
         </div>
       </div>`;
 
@@ -258,6 +288,8 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
     $('#clear').onclick = ()=>{ this.hiLayer.clearLayers(); $('#results').style.display='none'; };
     $('#rclose').onclick = ()=>{ $('#results').style.display='none'; };
     $('#base').onchange = (e:any)=>this.setBase(e.target.value);
+    $('#zmode').onchange = (e:any)=>this.setZoningMode(e.target.value);
+    this.buildZLegend();
 
     this.buildMap();
   }
@@ -272,12 +304,15 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
     };
     this.bases.aerial.addTo(this.map);
     this.labels = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}',{maxZoom:20,opacity:.9}).addTo(this.map);
-    this.parcelLayer = L.geoJSON(null,{ style:()=>({color:'#ffd24d',weight:1,fillColor:'#000',fillOpacity:0.001}), onEachFeature:(ft:any,layer:any)=>this.onFeat(ft,layer) }).addTo(this.map);
+    this.map.createPane('zoning'); this.map.getPane('zoning').style.zIndex='350'; this.map.getPane('zoning').style.pointerEvents='none';
+    this.zOverlay = L.imageOverlay(this.zoningAssetUrl, RBS_BOUNDS, {opacity:0.62, interactive:false, pane:'zoning'});
+    this.parcelLayer = L.geoJSON(null,{ style:(ft:any)=>this.parcelStyle(ft), onEachFeature:(ft:any,layer:any)=>this.onFeat(ft,layer) }).addTo(this.map);
     this.hiLayer = L.geoJSON(null,{ style:{color:'#ff2d55',weight:3,fill:false} }).addTo(this.map);
     this.map.on('moveend',()=>{ clearTimeout(this.loadTimer); this.loadTimer=setTimeout(()=>this.maybeLoad(),250); });
     this.setStatus('Pan/zoom to your area — parcels load at zoom '+MINZOOM+'+');
     setTimeout(()=>{ try{ this.map.invalidateSize(); }catch(e){} this.loadParcels(); },400);
     window.addEventListener('resize',()=>{ clearTimeout(this.rzTimer); this.rzTimer=setTimeout(()=>{ try{ if(this.map) this.map.invalidateSize(); }catch(e){} },200); });
+    this.loadZoning();
   }
 
   private setBase(v:string): void {
@@ -339,7 +374,13 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
 
   private onFeat(feat:any, layer:any): void {
     // Standalone MAP popup (NOT bound to the parcel layer) so a parcel reload can't close it → no re-clicking.
-    layer.on('click',(ev:any)=>{ const src=SOURCES.filter((s)=>s.id===feat.properties.__src)[0]||SOURCES[0]; const n=normalize(feat.properties,src); const ll=(ev&&ev.latlng)||(layer.getBounds&&layer.getBounds().getCenter()); L.popup({maxWidth:300,autoPanPadding:[24,24]}).setLatLng(ll).setContent(this.popupHtml(n)).openOn(this.map); });
+    layer.on('click',(ev:any)=>{
+      const src=SOURCES.filter((s)=>s.id===feat.properties.__src)[0]||SOURCES[0];
+      const n=normalize(feat.properties,src);
+      const ll=(ev&&ev.latlng)||(layer.getBounds&&layer.getBounds().getCenter());
+      if(this.zoningEdit){ this.openZonePicker(n, ll); return; }
+      L.popup({maxWidth:300,autoPanPadding:[24,24]}).setLatLng(ll).setContent(this.popupHtml(n)).openOn(this.map);
+    });
   }
 
   private popupHtml(n:any): string {
@@ -353,6 +394,7 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
     if(n.acres) row('Acres', (+n.acres? (+n.acres).toFixed(2):n.acres));
     if(n.subdiv) row('Subdiv', n.subdiv+(n.lot?'  Lot '+n.lot:''));
     if(n.zoning) row('Zoning', n.zoning);
+    const zt=this.zoneByPin[pinKey(n.pin)]; if(zt) row('Zone (RBS)', zt.zone+' — '+(ZONE_NAMES[zt.zone]||'')+(zt.flood?' · Floodplain':''));
     if(n.deedBook||n.deedPage) row('Deed','Bk '+n.deedBook+' Pg '+n.deedPage);
     else if(n.legalref) row('Deed ref', n.legalref);
     else if(n.deedref) row('Deed ref', n.deedref);
@@ -395,6 +437,8 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
     else if(act==='deedName') this.deedName(id);
     else if(act==='deedGoUS') this.deedGoUS(id);
     else if(act==='cpf'){ const e=this.POP[id]; if(e) this.copyText(e[arg]||''); }
+    else if(act==='zset') this.saveZone(arg);
+    else if(act==='zclear') this.clearZone();
   }
 
   private openDeferred(): any { const w=window.open('','_blank'); try{ if(w) w.document.write('<p style="font:14px/1.4 sans-serif;padding:18px;color:#333">Looking up the latest deed…</p>'); }catch(e){} return w; }
@@ -456,13 +500,100 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
     L.popup({maxWidth:300}).setLatLng(this.hiLayer.getBounds().getCenter()).setContent(this.popupHtml(n)).openOn(this.map);
   }
 
+  // ======================= RBS zoning layer =======================
+  private cfg(): any { return (SPHttpClient as any).configurations.v1; }
+  private listApi(): string { return this.context.pageContext.web.absoluteUrl + "/_api/web/lists/getbytitle('" + this.zoneListTitle.replace(/'/g,"''") + "')"; }
+  private spGet(url:string): Promise<any> { return this.context.spHttpClient.get(url, this.cfg(), {headers:{Accept:'application/json;odata=nometadata'}}).then((r:any)=>r.json()); }
+  private spPost(url:string, body:any, extra?:any): Promise<any> {
+    const headers:any = Object.assign({Accept:'application/json;odata=nometadata','Content-Type':'application/json;odata=nometadata','odata-version':''}, extra||{});
+    return this.context.spHttpClient.post(url, this.cfg(), {headers:headers, body: body?JSON.stringify(body):'{}'});
+  }
+
+  private loadZoning(): void {
+    this.spGet(this.listApi()+'/items?$select=Id,ParcelID,Zone,Floodplain&$top=5000').then((d:any)=>{
+      const items=(d&&d.value)||[]; const m:any={};
+      items.forEach((it:any)=>{ if(it.ParcelID&&it.Zone){ m[pinKey(it.ParcelID)]={zone:it.Zone,flood:!!it.Floodplain,id:it.Id}; } });
+      this.zoneByPin=m; this.restyleParcels();
+    }).catch(()=>{ /* list missing / no access — zoning just stays empty */ });
+  }
+
+  private featPin(ft:any): string { const src=SOURCES.filter((s)=>s.id===ft.properties.__src)[0]||SOURCES[0]; return pinKey(pick(ft.properties, src.f.pin)); }
+  private parcelStyle(ft:any): any {
+    if(this.zoningView){ const z=this.zoneByPin[this.featPin(ft)]; if(z){ return {color:'#6b5300',weight:1,fillColor:ZONE_COLORS[z.zone]||'#888',fillOpacity:0.55}; } }
+    return {color:'#ffd24d',weight:1,fillColor:'#000',fillOpacity:0.001};
+  }
+  private restyleParcels(): void { try{ if(this.parcelLayer) this.parcelLayer.setStyle((ft:any)=>this.parcelStyle(ft)); }catch(e){} }
+
+  private buildZLegend(): void {
+    const el=this.domElement.querySelector('#zlegend') as any; if(!el) return;
+    let h='<b>RBS zoning</b>';
+    ZONES.forEach((z)=>{ h+='<div class="zi"><span class="zsw" style="background:'+ZONE_COLORS[z]+'"></span>'+z+' &middot; '+ZONE_NAMES[z]+'</div>'; });
+    h+='<div class="zdisc">Self-tagged from the adopted RBS map. Reference only &mdash; confirm with the city.</div>';
+    el.innerHTML=h;
+  }
+
+  private setZoningMode(v:string): void {
+    this.zoningView = (v==='view'||v==='edit');
+    this.zoningEdit = (v==='edit');
+    const zl=this.domElement.querySelector('#zlegend') as any;
+    if(this.zOverlay){ if(v==='edit'){ this.zOverlay.addTo(this.map); } else if(this.map.hasLayer(this.zOverlay)){ this.map.removeLayer(this.zOverlay); } }
+    if(zl) zl.style.display = this.zoningView ? 'block' : 'none';
+    this.restyleParcels();
+    if(v==='edit') this.setStatus('Zoning EDIT — click a lot, pick its zone (read it from the adopted map shown underneath). Reference only.');
+    else if(v==='view') this.setStatus('Zoning VIEW — tagged lots are colored by district.');
+    else this.setStatus('Zoning off.');
+    this.map.closePopup();
+  }
+
+  private openZonePicker(n:any, ll:any): void {
+    const pin=pinKey(n.pin); if(!pin){ this.setStatus('This parcel has no ID — cannot tag it.'); return; }
+    this.zTarget={pin:pin, raw:String(n.pin).trim()};
+    const cur=this.zoneByPin[pin];
+    let g=''; ZONES.forEach((z)=>{ g+='<button class="zbtn" data-act="zset" data-arg="'+z+'" style="background:'+ZONE_COLORS[z]+'">'+z+'<small>'+ZONE_NAMES[z]+'</small></button>'; });
+    const html='<div class="zp"><div class="zp-h">Set zoning &middot; RBS</div>'
+      +'<div class="zp-pin">Parcel: <b>'+esc(n.pin)+'</b></div>'
+      +'<div class="zp-cur">Current: <b>'+(cur?esc(cur.zone)+(cur.flood?' + Floodplain':''):'—')+'</b></div>'
+      +'<div class="zp-grid">'+g+'</div>'
+      +'<label class="zp-fl"><input type="checkbox" id="zpFlood"'+(cur&&cur.flood?' checked':'')+'> In 1% floodplain</label>'
+      +'<button class="zp-clear" data-act="zclear">Clear zone</button>'
+      +'<div class="zp-note">Reads from the adopted RBS map underneath. Reference only — not an official determination.</div></div>';
+    L.popup({maxWidth:280,autoPanPadding:[24,24]}).setLatLng(ll).setContent(html).openOn(this.map);
+  }
+
+  private saveZone(zone:string): void {
+    const t=this.zTarget; if(!t||!t.pin||ZONES.indexOf(zone)<0) return;
+    const fl=this.domElement.querySelector('#zpFlood') as any; const flood=!!(fl&&fl.checked);
+    const cur=this.zoneByPin[t.pin];
+    const done=(id:number)=>{ this.zoneByPin[t.pin]={zone:zone,flood:flood,id:id}; this.restyleParcels(); this.setStatus('Saved '+t.raw+' → '+zone+(flood?' + floodplain':'')); this.map.closePopup(); };
+    if(cur && cur.id){
+      this.spPost(this.listApi()+'/items('+cur.id+')', {Zone:zone,Floodplain:flood}, {'X-HTTP-Method':'MERGE','IF-MATCH':'*'})
+        .then((r:any)=>{ if(r.status>=200&&r.status<300) done(cur.id); else this.setStatus('Save failed ('+r.status+') — check list permissions'); })
+        .catch((e:any)=>this.setStatus('Save failed: '+e));
+    } else {
+      this.spPost(this.listApi()+'/items', {Title:t.raw,ParcelID:t.raw,Jurisdiction:'RBS',Zone:zone,Floodplain:flood})
+        .then((r:any)=>{ if(r.status>=200&&r.status<300) return r.json(); throw new Error('HTTP '+r.status); })
+        .then((d:any)=>done(d&&d.Id))
+        .catch((e:any)=>this.setStatus('Save failed: '+e));
+    }
+  }
+
+  private clearZone(): void {
+    const t=this.zTarget; if(!t||!t.pin) return; const cur=this.zoneByPin[t.pin];
+    if(!cur||!cur.id){ this.map.closePopup(); return; }
+    this.spPost(this.listApi()+'/items('+cur.id+')', null, {'X-HTTP-Method':'DELETE','IF-MATCH':'*'})
+      .then((r:any)=>{ if(r.status>=200&&r.status<300){ delete this.zoneByPin[t.pin]; this.restyleParcels(); this.setStatus('Cleared zoning for '+t.raw); this.map.closePopup(); } else this.setStatus('Clear failed ('+r.status+')'); })
+      .catch((e:any)=>this.setStatus('Clear failed: '+e));
+  }
+
   private setStatus(t:string): void { const el=this.domElement.querySelector('#status'); if(el) el.textContent=t; }
 
   protected get dataVersion(): Version { return Version.parse('1.0'); }
   protected getPropertyPaneConfiguration(): IPropertyPaneConfiguration {
     return { pages:[{ header:{description:'Property & Deed Map settings'}, groups:[{ groupName:'Settings', groupFields:[
       PropertyPaneTextField('title',{label:'Title'}),
-      PropertyPaneTextField('workerUrl',{label:'Deed Worker URL (Cloudflare)'})
+      PropertyPaneTextField('workerUrl',{label:'Deed Worker URL (Cloudflare)'}),
+      PropertyPaneTextField('zoneListTitle',{label:'Zoning list title'}),
+      PropertyPaneTextField('zoningAssetUrl',{label:'RBS zoning overlay image URL'})
     ]}]}]};
   }
 }
