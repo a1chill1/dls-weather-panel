@@ -235,7 +235,18 @@ function tsBookPageUrl(bp:any){ return TS_BASE+'bookPageSearch.php?'+qs({book:bp
 function outFieldsFor(s:any){ const set:any={}; ['pin','owner','owner2','address','mail','subdiv','lot','acres','zoning','assr','tpad','gislinkf','deedBook','deedPage','legalref','deedref'].forEach((k)=>{ (s.f[k]||[]).forEach((fn:string)=>{ set[fn]=1; }); }); if(s.countyField) set[s.countyField]=1; return Object.keys(set).join(',')||'*'; }
 function bboxIntersect(a:any,b:any){ return !(b[0]>a[2]||b[2]<a[0]||b[1]>a[3]||b[3]<a[1]); }
 
-export interface IPropertyDeedMapWebPartProps { title: string; workerUrl: string; zoneListTitle: string; zoningAssetBase: string; }
+// ============================ Coverage / Projects layer (WIP survey jobs) ============================
+// Ported from the standalone Coverage Map (2026-06-15): status-colored project pins + Status/Deadline/
+// County/JobType/Year filters + search + one-click job-folder links, reading the WIP list live. Toggled
+// from the toolbar (Projects Off/On). Status colors = the WIP "Project Status" column's exact colors.
+const PALETTE:any = { 'Fielding':'Blue','Crew Assigned':'Magenta','Fielding Complete':'Cyan','Drafting':'Purple','Drafting Complete':'DarkOrange','Waiting on Client':'#008080','Planning Approval':'LimeGreen','HOLD':'Black','Pending Bill':'Brown','Billed':'Red','Paid - Closeout':'Green','Dropped Project':'Gray','Initial Research':'Pink','Onsite Meeting':'Pink','Waiting on Signatures':'Pink','Plat Submitted':'Pink' };
+const STATUS_ORDER:any = ['Initial Research','Fielding','Crew Assigned','Fielding Complete','Drafting','Drafting Complete','Onsite Meeting','Waiting on Client','Waiting on Signatures','Plat Submitted','Planning Approval','HOLD','Pending Bill','Billed','Paid - Closeout','Dropped Project'];
+const DEFAULT_STATUS_ON:any = ['Fielding','Crew Assigned','Drafting','Drafting Complete','Planning Approval','Waiting on Client'];
+const DEADLINE_ORDER:any = ['Overdue','Due in 14 days','Due in 30 days','Due later','No date','Completed'];
+function colorFor(s:any){ return PALETTE[s]||'Pink'; }
+function deadlineBucket(status:any, fnlt:any){ if(status==='Paid - Closeout'||status==='Dropped Project') return 'Completed'; if(!fnlt) return 'No date'; const d=new Date(fnlt); if(isNaN(d.getTime())) return 'No date'; const now=new Date(); now.setHours(0,0,0,0); const days=(d.getTime()-now.getTime())/86400000; if(days<0) return 'Overdue'; if(days<=14) return 'Due in 14 days'; if(days<=30) return 'Due in 30 days'; return 'Due later'; }
+
+export interface IPropertyDeedMapWebPartProps { title: string; workerUrl: string; zoneListTitle: string; zoningAssetBase: string; projectsListGuid: string; }
 
 export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPropertyDeedMapWebPartProps> {
   private map:any; private parcelLayer:any; private hiLayer:any; private labels:any; private bases:any;
@@ -247,6 +258,8 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
   private splitState:any=null; private splitLayer:any=null; private splitTmp:any[]=[]; private splitMarkers:any[]=[]; private _splitClick:any=null; private _splitDrawPopup:any=null;
   private femaLayer:any=null; private _femaOn=false; private areasLayer:any=null; private _areasRenderer:any=null; private areas:any[]=[]; private _areasOn=false;
   private areaState:any=null; private areaMarkers:any[]=[]; private areaLine:any=null; private _areaClick:any=null;
+  private projects:any[]=[]; private projectLayer:any=null; private _projRenderer:any=null; private _projOn=false; private _projLoaded=false;
+  private pStatusOn:any={}; private pCountyOn:any={}; private pTypeOn:any={}; private pYearOn:any={}; private pDeadlineOn:any={}; private pSearch='';
 
   protected onInit(): Promise<void> {
     if (!document.getElementById('dls-leaflet-css')) {
@@ -271,6 +284,7 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
   private get workerUrl(): string { return this.properties.workerUrl || 'https://dls-deed.alex-564.workers.dev/'; }
   private get zoneListTitle(): string { return this.properties.zoneListTitle || 'DLS Zoning Assignments'; }
   private get zoningAssetBase(): string { let b=this.properties.zoningAssetBase || (this.context.pageContext.web.absoluteUrl + '/SiteAssets/zoning/'); return b.charAt(b.length-1)==='/'?b:b+'/'; }
+  private get projectsListGuid(): string { return this.properties.projectsListGuid || 'ecfa34b1-214a-4b6a-a661-0d074800714e'; }
 
   public render(): void {
     this.domElement.innerHTML = `
@@ -343,6 +357,24 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
         .zp .zbnone{background:#f1f5f9 !important;color:#475569;font-weight:600;}
         .zp .zp-save{background:#16a34a;color:#fff;border:1px solid transparent;border-radius:5px;padding:4px 10px;font-size:11px;font-weight:600;cursor:pointer;}
         .znum{background:#1d4ed8 !important;color:#fff;border:none !important;border-radius:50%;width:18px !important;height:18px !important;line-height:18px;text-align:center;font-size:11px;font-weight:700;box-shadow:0 1px 3px rgba(0,0,0,.45);}
+        .dls-pm #proj{background:#33445a;color:#fff;}
+        .dls-pm #plegend{position:absolute;z-index:950;top:8px;left:8px;width:240px;max-height:calc(100% - 22px);overflow:auto;background:rgba(255,255,255,.98);border:1px solid #cbd5e1;border-radius:8px;box-shadow:0 6px 20px rgba(0,0,0,.18);display:none;}
+        .dls-pm #plegend .pp-h{display:flex;align-items:center;gap:6px;padding:8px 10px;background:#1f2a37;color:#fff;border-radius:8px 8px 0 0;font-size:12px;position:sticky;top:0;z-index:1;}
+        .dls-pm #plegend .pp-h b{font-size:12.5px;} .dls-pm #plegend .pp-ct{color:#9fb0c3;font-size:10px;flex:1;}
+        .dls-pm #plegend .pp-x{cursor:pointer;color:#cbd5e1;font-weight:700;font-size:15px;line-height:1;}
+        .dls-pm #plegend .pp-body{padding:8px 10px;}
+        .dls-pm #plegend .pp-search{width:100%;box-sizing:border-box;font-size:11.5px;padding:5px 7px;border:1px solid #cbd5e1;border-radius:5px;margin-bottom:6px;}
+        .dls-pm #plegend .pp-reset{width:100%;font-size:11px;padding:5px;margin-bottom:9px;background:#33445a;color:#fff;border:none;border-radius:5px;cursor:pointer;font-weight:600;}
+        .dls-pm #plegend .pp-sec{margin-bottom:9px;}
+        .dls-pm #plegend .pp-lbl{font-size:9.5px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.03em;margin-bottom:3px;display:flex;justify-content:space-between;align-items:center;}
+        .dls-pm #plegend .pp-all{color:#2563eb;cursor:pointer;font-weight:600;text-transform:none;letter-spacing:0;font-size:10px;}
+        .dls-pm #plegend .pp-row{display:flex;align-items:center;gap:6px;padding:2px 3px;border-radius:4px;cursor:pointer;font-size:11px;}
+        .dls-pm #plegend .pp-row:hover{background:#f1f5f9;} .dls-pm #plegend .pp-row.off{opacity:.4;}
+        .dls-pm #plegend .pp-dot{width:11px;height:11px;border-radius:50%;border:1px solid rgba(0,0,0,.3);flex:none;}
+        .dls-pm #plegend .pp-sq{width:11px;height:11px;border-radius:3px;background:#94a3b8;flex:none;}
+        .dls-pm #plegend .pp-nm{flex:1;color:#0f172a;} .dls-pm #plegend .pp-n{color:#64748b;font-size:10px;}
+        .dls-pop b{font-size:13px;} .dls-pop .m{color:#6b7280;margin:2px 0;font-size:11px;}
+        .dls-pop a.dls-pop-a{display:inline-block;margin-top:6px;padding:5px 9px;background:#C2410C;color:#fff;border-radius:6px;text-decoration:none;font-weight:600;font-size:11px;}
       </style>
       <div class="dls-pm">
         <div class="bar">
@@ -355,6 +387,7 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
           <span class="sp"></span>
           <select id="base"><option value="aerial">Aerial</option><option value="streets" selected>Streets</option><option value="topo">Topo</option></select>
           <select id="zmode" title="Zoning layer (View / Edit)"><option value="off">Zoning: Off</option><option value="view" selected>Zoning: View</option><option value="edit">Zoning: Edit (tag lots)</option></select>
+          <select id="proj" title="Survey projects layer (WIP)"><option value="off" selected>Projects: Off</option><option value="on">Projects: On</option></select>
           <button id="fs" class="ghost" title="Full screen (Esc to exit)">Full screen</button>
           <span id="status">Loading&hellip;</span>
         </div>
@@ -363,6 +396,7 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
           <div id="results"><h4><span id="rtitle">Results</span><span class="x" id="rclose">&times;</span></h4><div id="rlist"></div></div>
           <div id="legend"><b>Parcels load at zoom ${MINZOOM}+</b> &mdash; pan/zoom to your area.<br/><span class="src" id="legsrc">Active data: &mdash;</span><div class="disc">Reference only &mdash; not a boundary survey, title opinion, or zoning determination. Parcel &amp; owner data are pulled live from each assessor and may lag.</div></div>
           <div id="zlegend"></div>
+          <div id="plegend"></div>
         </div>
       </div>`;
 
@@ -376,6 +410,7 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
     $('#rclose').onclick = ()=>{ $('#results').style.display='none'; };
     $('#base').onchange = (e:any)=>this.setBase(e.target.value);
     $('#zmode').onchange = (e:any)=>this.setZoningMode(e.target.value);
+    $('#proj').onchange = (e:any)=>this.setProjectsMode(e.target.value==='on');
     $('#fs').onclick = ()=>this.toggleFs();
     this.buildMap();
     this.buildZPanel();
@@ -398,6 +433,9 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
     this.map.createPane('areas'); this.map.getPane('areas').style.zIndex='430'; this.map.getPane('areas').style.pointerEvents='none';
     this._areasRenderer = L.svg({pane:'areas'}); this._areasRenderer.addTo(this.map);
     this.areasLayer = L.layerGroup().addTo(this.map);
+    this.map.createPane('projects'); this.map.getPane('projects').style.zIndex='500';
+    this._projRenderer = L.svg({pane:'projects'}); this._projRenderer.addTo(this.map);
+    this.projectLayer = L.layerGroup().addTo(this.map);
     const FemaTiles:any = L.TileLayer.extend({ getTileUrl:function(coords:any){ const map=this._map; const ts=this.getTileSize(); const nw=map.unproject(L.point(coords.x*ts.x,coords.y*ts.y),coords.z); const se=map.unproject(L.point((coords.x+1)*ts.x,(coords.y+1)*ts.y),coords.z); const a=L.CRS.EPSG3857.project(nw), b=L.CRS.EPSG3857.project(se); const bbox=Math.min(a.x,b.x)+','+Math.min(a.y,b.y)+','+Math.max(a.x,b.x)+','+Math.max(a.y,b.y); return 'https://hazards.fema.gov/arcgis/rest/services/public/NFHL/MapServer/export?bbox='+bbox+'&bboxSR=3857&imageSR=3857&size='+ts.x+','+ts.y+'&dpi=96&format=png32&transparent=true&f=image'; } });
     this.femaLayer = new FemaTiles('', {tileSize:256, opacity:0.55, pane:'zoning', maxZoom:20, attribution:'Flood data © FEMA NFHL'});
     ZJURS.forEach((j:any)=>{ j._layer = L.imageOverlay(this.zoningAssetBase+j.file, j.bounds, {opacity:j.opacity, interactive:false, pane:'zoning'}); j._on = false; });
@@ -850,6 +888,98 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
     Object.keys(m).forEach((pin)=>{ const z=m[pin]; if(z&&z.split&&z.pieces){ z.pieces.forEach((p:any)=>{ if(!p.z||!p.r||p.r.length<3) return; const latlngs=p.r.map((c:any)=>[c[1],c[0]]); self.splitLayer.addLayer(L.polygon(latlngs,{color:'#6b5300',weight:1,fillColor:self.jurColor(z.jur,p.z),fillOpacity:0.55,interactive:false,pane:'zsplit'})); }); } });
   }
 
+  // ======================= Projects (Coverage Map) layer =======================
+  private loadProjects(): void {
+    if(this._projLoaded){ this.buildProjectPanel(); this.renderProjectPins(); return; }
+    const url = this.context.pageContext.web.absoluteUrl + "/_api/web/lists(guid'" + this.projectsListGuid + "')/items?$top=500&$select=Id,Title,JobLabel,Lat,Lng,FolderURL,County,ProjectStatus,JobTypeStandard,Property_x0020_Address,FNLTDate";
+    this.setStatus('Loading projects…');
+    this.spGet(url).then((d:any)=>{
+      const items=(d&&d.value)||[]; const arr:any[]=[];
+      items.forEach((x:any)=>{ if(x.Lat==null||x.Lng==null) return; const t=(x.Title==null?'':String(x.Title)); const yr=/^\d{6}/.test(t)?('20'+t.substring(0,2)):'(blank)'; const county=(x.County==null?'':String(x.County)).replace(/^\d+\s*-\s*/,'').replace(/,?\s*(TN|KY)\b.*$/i,'').trim(); arr.push({ Id:x.Id, Title:t, JobLabel:x.JobLabel||'', Lat:x.Lat, Lng:x.Lng, FolderURL:x.FolderURL||'', County:county, Status:x.ProjectStatus||'', JobType:x.JobTypeStandard||'', Address:x.Property_x0020_Address||'', Year:yr, Deadline:deadlineBucket(x.ProjectStatus||'', x.FNLTDate) }); });
+      this.projects=arr; this._projLoaded=true;
+      arr.forEach((j:any)=>{ const s=j.Status||'(no status)'; if(this.pStatusOn[s]===undefined) this.pStatusOn[s]=DEFAULT_STATUS_ON.indexOf(s)>=0; const c=j.County||'(blank)'; if(this.pCountyOn[c]===undefined) this.pCountyOn[c]=true; const ty=j.JobType||'(blank)'; if(this.pTypeOn[ty]===undefined) this.pTypeOn[ty]=true; const y=j.Year||'(blank)'; if(this.pYearOn[y]===undefined) this.pYearOn[y]=true; const dl=j.Deadline||'No date'; if(this.pDeadlineOn[dl]===undefined) this.pDeadlineOn[dl]=true; });
+      this.buildProjectPanel(); this.renderProjectPins(); this.setStatus(this.projects.length+' projects loaded');
+    }).catch((e:any)=>{ this.setStatus('Projects: could not load WIP jobs ('+e+')'); });
+  }
+
+  private projVisible(j:any): boolean {
+    if(this.pStatusOn[j.Status||'(no status)']===false) return false;
+    if(this.pCountyOn[j.County||'(blank)']===false) return false;
+    if(this.pTypeOn[j.JobType||'(blank)']===false) return false;
+    if(this.pYearOn[j.Year||'(blank)']===false) return false;
+    if(this.pDeadlineOn[j.Deadline||'No date']===false) return false;
+    if(this.pSearch){ const hay=(j.JobLabel+' '+j.Title+' '+j.Address+' '+j.County).toLowerCase(); if(hay.indexOf(this.pSearch)<0) return false; }
+    return true;
+  }
+
+  private renderProjectPins(): void {
+    if(!this.projectLayer) return; this.projectLayer.clearLayers();
+    if(!this._projOn){ this.updateProjCount(0); return; }
+    let shown=0; const self=this;
+    this.projects.forEach((j:any)=>{
+      if(!self.projVisible(j)) return; shown++;
+      const st=j.Status||'(no status)';
+      const label=j.JobLabel||(j.Title+(j.County?' — '+j.County:''));
+      const folder=j.FolderURL?'<a class="dls-pop-a" href="'+esc(j.FolderURL)+'" target="_blank" rel="noopener">Open project folder &#8599;</a>':'';
+      const html='<div class="dls-pop"><b>'+esc(label)+'</b>'+(j.Status?'<div class="m">'+esc(j.Status)+(j.JobType?' &middot; '+esc(j.JobType):'')+'</div>':'')+(j.Address?'<div class="m">'+esc(j.Address)+'</div>':'')+folder+'</div>';
+      const m=L.circleMarker([j.Lat,j.Lng],{radius:7,fillColor:colorFor(st),color:'#fff',weight:2,fillOpacity:0.9,pane:'projects',renderer:self._projRenderer});
+      m.bindPopup(html,{maxWidth:260}); m.addTo(self.projectLayer);
+    });
+    this.updateProjCount(shown);
+  }
+  private updateProjCount(shown:number): void { const c=this.domElement.querySelector('#pCount'); if(c) c.textContent=shown+' of '+this.projects.length+' jobs'; }
+
+  private setProjectsMode(on:boolean): void {
+    this._projOn=on;
+    const sel=this.domElement.querySelector('#proj') as any; if(sel && sel.value!==(on?'on':'off')) sel.value=on?'on':'off';
+    if(on){ this.loadProjects(); }
+    else { if(this.projectLayer) this.projectLayer.clearLayers(); this.buildProjectPanel(); this.setStatus('Projects layer off.'); }
+  }
+
+  private projCounts(keyFn:any): any { const m:any={}; this.projects.forEach((j:any)=>{ const k=keyFn(j); m[k]=(m[k]||0)+1; }); return m; }
+
+  private buildProjectPanel(): void {
+    const el=this.domElement.querySelector('#plegend') as any; if(!el) return;
+    if(!this._projOn){ el.style.display='none'; return; }
+    el.style.display='block';
+    let h='<div class="pp-h"><b>Projects</b><span id="pCount" class="pp-ct"></span><span class="pp-x" id="pClose">&times;</span></div><div class="pp-body">';
+    h+='<input id="pSearch" class="pp-search" placeholder="Search client / address / job #" value="'+esc(this.pSearch)+'"/>';
+    h+='<button class="pp-reset" id="pReset">Reset filters</button>';
+    h+='<div class="pp-sec"><div class="pp-lbl">Project status <span class="pp-all" data-pdim="status">all</span></div><div id="pStatus"></div></div>';
+    h+='<div class="pp-sec"><div class="pp-lbl">Deadline <span class="pp-all" data-pdim="deadline">all</span></div><div id="pDeadline"></div></div>';
+    h+='<div class="pp-sec"><div class="pp-lbl">County <span class="pp-all" data-pdim="county">all</span></div><div id="pCounty"></div></div>';
+    h+='<div class="pp-sec"><div class="pp-lbl">Job type <span class="pp-all" data-pdim="type">all</span></div><div id="pType"></div></div>';
+    h+='<div class="pp-sec"><div class="pp-lbl">Year <span class="pp-all" data-pdim="year">all</span></div><div id="pYear"></div></div></div>';
+    el.innerHTML=h;
+    const self=this;
+    const cl=el.querySelector('#pClose') as any; if(cl) cl.onclick=function(){ self.setProjectsMode(false); };
+    const si=el.querySelector('#pSearch') as any; if(si) si.oninput=function(){ self.pSearch=(si.value||'').toLowerCase().trim(); self.renderProjectPins(); };
+    const rb=el.querySelector('#pReset') as any; if(rb) rb.onclick=function(){ self.projReset(); };
+    const alls=el.querySelectorAll('[data-pdim]'); for(let i=0;i<alls.length;i++){ alls[i].addEventListener('click',function(e:any){ self.projAllOn(e.target.getAttribute('data-pdim')); }); }
+    this.renderProjSections();
+  }
+
+  private renderProjSections(): void {
+    this.renderProjSection('#pStatus', this.pStatusOn, 'status', true);
+    this.renderProjSection('#pDeadline', this.pDeadlineOn, 'deadline', false);
+    this.renderProjSection('#pCounty', this.pCountyOn, 'county', false);
+    this.renderProjSection('#pType', this.pTypeOn, 'type', false);
+    this.renderProjSection('#pYear', this.pYearOn, 'year', false);
+  }
+
+  private renderProjSection(sel:string, state:any, dim:string, color:boolean): void {
+    const el=this.domElement.querySelector(sel) as any; if(!el) return;
+    const keyFn = dim==='status'?(j:any)=>j.Status||'(no status)' : dim==='county'?(j:any)=>j.County||'(blank)' : dim==='type'?(j:any)=>j.JobType||'(blank)' : dim==='year'?(j:any)=>j.Year||'(blank)' : (j:any)=>j.Deadline||'No date';
+    const counts=this.projCounts(keyFn);
+    const keys=Object.keys(counts).sort((a:any,b:any)=>{ if(dim==='status'){ const ia=STATUS_ORDER.indexOf(a),ib=STATUS_ORDER.indexOf(b); return (ia<0?99:ia)-(ib<0?99:ib); } if(dim==='deadline'){ const ia=DEADLINE_ORDER.indexOf(a),ib=DEADLINE_ORDER.indexOf(b); return (ia<0?99:ia)-(ib<0?99:ib); } if(dim==='year') return b.localeCompare(a); return a.localeCompare(b); });
+    const self=this; el.innerHTML='';
+    keys.forEach((k:string)=>{ const row=document.createElement('div'); row.className='pp-row'+(state[k]===false?' off':''); const mark=color?'<span class="pp-dot" style="background:'+colorFor(k)+'"></span>':'<span class="pp-sq"></span>'; row.innerHTML=mark+'<span class="pp-nm">'+esc(k||'(blank)')+'</span><span class="pp-n">'+counts[k]+'</span>'; row.onclick=function(){ state[k]=state[k]===false; self.renderProjectPins(); self.renderProjSections(); }; el.appendChild(row); });
+  }
+
+  private projAllOn(dim:string): void { const st = dim==='status'?this.pStatusOn:dim==='county'?this.pCountyOn:dim==='type'?this.pTypeOn:dim==='year'?this.pYearOn:dim==='deadline'?this.pDeadlineOn:null; if(!st) return; Object.keys(st).forEach((k)=>{ st[k]=true; }); this.renderProjectPins(); this.renderProjSections(); }
+
+  private projReset(): void { const self=this; Object.keys(this.pStatusOn).forEach((k)=>{ self.pStatusOn[k]=DEFAULT_STATUS_ON.indexOf(k)>=0; }); [this.pCountyOn,this.pTypeOn,this.pYearOn,this.pDeadlineOn].forEach((st:any)=>{ Object.keys(st).forEach((k)=>{ st[k]=true; }); }); this.pSearch=''; const si=this.domElement.querySelector('#pSearch') as any; if(si) si.value=''; this.renderProjectPins(); this.renderProjSections(); }
+
   // ======================= FEMA flood + drawn areas =======================
   private apiList(title:string): string { return this.context.pageContext.web.absoluteUrl + "/_api/web/lists/getbytitle('" + title.replace(/'/g,"''") + "')"; }
 
@@ -934,7 +1064,8 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
       PropertyPaneTextField('title',{label:'Title'}),
       PropertyPaneTextField('workerUrl',{label:'Deed Worker URL (Cloudflare)'}),
       PropertyPaneTextField('zoneListTitle',{label:'Zoning list title'}),
-      PropertyPaneTextField('zoningAssetBase',{label:'Zoning overlays folder URL'})
+      PropertyPaneTextField('zoningAssetBase',{label:'Zoning overlays folder URL'}),
+      PropertyPaneTextField('projectsListGuid',{label:'WIP / Projects list GUID'})
     ]}]}]};
   }
 }
