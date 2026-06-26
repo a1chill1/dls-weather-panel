@@ -324,6 +324,9 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
         .dls-pm #zlegend .ztag select{font-size:11px;padding:2px 4px;margin-top:2px;max-width:100%;}
         .zp{font-family:'Segoe UI',Arial,sans-serif;min-width:212px;} .zp .zp-h{font-weight:700;font-size:13px;margin-bottom:2px;}
         .zp .zp-pin,.zp .zp-cur{font-size:11px;color:#475569;} .zp .zp-cur{margin-bottom:6px;}
+        .zp .zp-jurs{display:flex;flex-wrap:wrap;align-items:center;gap:3px;margin:0 0 7px;font-size:10.5px;color:#475569;}
+        .zp .zp-jurbtn{border:1px solid #cbd5e1;border-radius:5px;padding:2px 7px;font-size:10.5px;font-weight:600;background:#f1f5f9;color:#334155;cursor:pointer;}
+        .zp .zp-jurbtn.on{background:#1f2a37;color:#fff;border-color:#1f2a37;}
         .zp .zp-grid{display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-bottom:6px;}
         .zp .zbtn{border:1px solid #94a3b8;border-radius:5px;padding:5px 6px;font-size:11px;font-weight:700;cursor:pointer;color:#1a1205;text-align:left;}
         .zp .zbtn small{display:block;font-weight:400;font-size:9px;color:#334155;line-height:1.15;margin-top:1px;}
@@ -532,6 +535,7 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
     else if(act==='deedGoUS') this.deedGoUS(id);
     else if(act==='cpf'){ const e=this.POP[id]; if(e) this.copyText(e[arg]||''); }
     else if(act==='zset') this.saveZone(arg);
+    else if(act==='zjur') this.switchZoneJur(arg);
     else if(act==='zclear') this.clearZone();
     else if(act==='zsplitopen') this.startSplitMenu();
     else if(act==='zsplit') this.beginSplit(arg);
@@ -673,17 +677,32 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
     const j = (this.tagJur && this.tagJur!=='auto') ? jurById(this.tagJur) : (jurAt(ll) || nearestJur(ll));
     if(!j){ this.setStatus('No zoning jurisdiction available to tag.'); return; }
     this.zTarget={pin:pin, raw:String(n.pin).trim(), jur:j.id, ll:ll, ring:outerRing(feat&&feat.geometry)};
-    const cur=this.zoneByPin[pin];
+    this.renderZonePicker();
+  }
+
+  // Re-pick the jurisdiction for the lot being tagged (RBS / Lafayette / Macon) — lets a city lot that the
+  // bounding box auto-detected as "Macon County" be tagged with the correct city's districts instead.
+  private switchZoneJur(jurId:string): void {
+    const j=jurById(jurId); if(!j||!this.zTarget) return;
+    this.zTarget.jur=jurId; this.renderZonePicker();
+    this.setStatus('Jurisdiction set to '+j.name+' — now pick the district.');
+  }
+
+  private renderZonePicker(): void {
+    const t=this.zTarget; if(!t||!t.jur) return; const j=jurById(t.jur); if(!j) return;
+    const cur=this.zoneByPin[t.pin];
     const curTxt = cur? (cur.split&&cur.pieces? esc(cur.pieces.map((p:any)=>p.z||'blank').join(' / '))+' (split, '+esc(cur.jur)+')' : esc(cur.zone)+' ('+esc(cur.jur)+')'+(cur.flood?' + Floodplain':'')) : '—';
-    let g=''; j.zones.forEach((z:string)=>{ g+='<button class="zbtn" data-act="zset" data-arg="'+z+'" style="background:'+j.colors[z]+'">'+z+'<small>'+j.names[z]+'</small></button>'; });
+    let jb=''; ZJURS.forEach((jj:any)=>{ if(!jj.taggable) return; jb+='<button class="zp-jurbtn'+(jj.id===t.jur?' on':'')+'" data-act="zjur" data-arg="'+esc(jj.id)+'">'+esc(jj.name)+'</button>'; });
+    let g=''; j.zones.forEach((z:string)=>{ g+='<button class="zbtn" data-act="zset" data-arg="'+z+'" style="background:'+j.colors[z]+'">'+z+'<small>'+esc(j.names[z])+'</small></button>'; });
     const html='<div class="zp"><div class="zp-h">Set zoning &middot; '+esc(j.name)+'</div>'
-      +'<div class="zp-pin">Parcel: <b>'+esc(n.pin)+'</b></div>'
+      +'<div class="zp-pin">Parcel: <b>'+esc(t.raw)+'</b></div>'
       +'<div class="zp-cur">Current: <b>'+curTxt+'</b></div>'
+      +'<div class="zp-jurs"><span>Jurisdiction:</span> '+jb+'</div>'
       +'<div class="zp-grid">'+g+'</div>'
       +'<label class="zp-fl"><input type="checkbox" id="zpFlood"'+(cur&&cur.flood?' checked':'')+'> In 1% floodplain</label>'
       +'<div style="margin-top:4px"><button class="zp-clear" data-act="zsplitopen">Split lot&hellip;</button> <button class="zp-clear" data-act="zclear">Clear</button></div>'
-      +'<div class="zp-note">'+esc(j.name)+(j.accuracy==='approx'?' overlay is approximate — verify boundary lots. ':' ')+'Reference only — not an official determination.</div></div>';
-    L.popup({maxWidth:280,autoPanPadding:[24,24]}).setLatLng(ll).setContent(html).openOn(this.map);
+      +'<div class="zp-note">If this lot is inside a city, pick the right jurisdiction above. '+esc(j.name)+(j.accuracy==='approx'?' overlay is approximate — verify boundary lots. ':' ')+'Reference only — not an official determination.</div></div>';
+    L.popup({maxWidth:300,autoPanPadding:[24,24]}).setLatLng(t.ll||this.map.getCenter()).setContent(html).openOn(this.map);
   }
 
   private saveZone(zone:string): void {
