@@ -505,7 +505,8 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
   private listApi(): string { return this.context.pageContext.web.absoluteUrl + "/_api/web/lists/getbytitle('" + this.zoneListTitle.replace(/'/g,"''") + "')"; }
   private spGet(url:string): Promise<any> { return this.context.spHttpClient.get(url, this.cfg(), {headers:{Accept:'application/json;odata=nometadata'}}).then((r:any)=>r.json()); }
   private spPost(url:string, body:any, extra?:any): Promise<any> {
-    const headers:any = Object.assign({Accept:'application/json;odata=nometadata','Content-Type':'application/json;odata=nometadata','odata-version':''}, extra||{});
+    const headers:any = {Accept:'application/json;odata=nometadata','Content-Type':'application/json;odata=nometadata','odata-version':''};
+    if(extra){ for(const k in extra){ headers[k]=extra[k]; } }
     return this.context.spHttpClient.post(url, this.cfg(), {headers:headers, body: body?JSON.stringify(body):'{}'});
   }
 
