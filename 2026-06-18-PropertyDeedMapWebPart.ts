@@ -157,8 +157,7 @@ const SOURCES: any[] = [
     search:{address:'ADDRESS',parcel:'PVA_PARCEL'} }
 ];
 
-const MINZOOM = 14;
-const PARCEL_DETAIL_ZOOM = 15;  // in Zoning:View, untagged parcel outlines show only at/above this zoom (keeps the town overview clean)
+const MINZOOM = 15;
 
 // ---- Self-tagged zoning layer (reference only), jurisdiction-aware ----
 // Each entry = one adopted map: bounds [[S,W],[N,E]] + its OWN districts/colors/names.
@@ -382,7 +381,7 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
 
   private buildMap(): void {
     const mapEl = this.domElement.querySelector('#map');
-    this.map = L.map(mapEl,{minZoom:6,maxZoom:20}).setView([36.521,-86.029],14);
+    this.map = L.map(mapEl,{minZoom:6,maxZoom:20}).setView([36.521,-86.029],16);
     this.bases = {
       aerial: L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',{maxZoom:20,attribution:'Imagery © Esri'}),
       streets: L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}',{maxZoom:20,attribution:'© Esri'}),
@@ -402,7 +401,6 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
     this.parcelLayer = L.geoJSON(null,{ style:(ft:any)=>this.parcelStyle(ft), onEachFeature:(ft:any,layer:any)=>this.onFeat(ft,layer) }).addTo(this.map);
     this.hiLayer = L.geoJSON(null,{ style:{color:'#ff2d55',weight:3,fill:false} }).addTo(this.map);
     this.map.on('moveend',()=>{ clearTimeout(this.loadTimer); this.loadTimer=setTimeout(()=>this.maybeLoad(),250); });
-    this.map.on('zoomend',()=>{ try{ this.restyleParcels(); }catch(e){} });   // toggle untagged-parcel outlines at PARCEL_DETAIL_ZOOM
     this.setStatus('Pan/zoom to your area — parcels load at zoom '+MINZOOM+'+');
     setTimeout(()=>{ try{ this.map.invalidateSize(); }catch(e){} this.loadParcels(); },400);
     window.addEventListener('resize',()=>{ clearTimeout(this.rzTimer); this.rzTimer=setTimeout(()=>{ try{ if(this.map) this.map.invalidateSize(); }catch(e){} },200); });
@@ -448,7 +446,7 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
     const srcs=this.activeSources();
     if(srcs.length===0){ this.parcelLayer.clearLayers(); this.loadedBounds=null; this.setStatus('No parcel source covers this view'); return; }
     if(legsrc) legsrc.textContent='Active data: '+srcs.map((s)=>s.label.replace(/^..? — /,'')).join(', ');
-    const pb=this.map.getBounds().pad(0.6); this.loadedBounds=pb; this.loadedZoom=this.map.getZoom();
+    const pb=this.map.getBounds().pad(0.2); this.loadedBounds=pb; this.loadedZoom=this.map.getZoom();
     const env=[pb.getWest(),pb.getSouth(),pb.getEast(),pb.getNorth()].join(',');
     this.setStatus('Loading parcels…');   // keep the OLD parcels on screen until the new set is ready (no flash)
     let got=0, done=0; const errs:string[]=[]; const acc:any[]=[];
@@ -624,12 +622,7 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
 
   private featPin(ft:any): string { const src=SOURCES.filter((s)=>s.id===ft.properties.__src)[0]||SOURCES[0]; return pinKey(pick(ft.properties, src.f.pin)); }
   private parcelStyle(ft:any): any {
-    if(this.zoningView){
-      const z=this.zoneByPin[this.featPin(ft)];
-      if(z){ if(z.split) return {color:'#6b5300',weight:1,fillColor:'#000',fillOpacity:0.001}; const j=jurById(z.jur)||ZJURS[0]; const c=(j.colors&&j.colors[z.zone])||'#888'; return {color:'#6b5300',weight:1,fillColor:c,fillOpacity:0.55}; }
-      // untagged lot in Zoning:View — keep the town overview clean: hide the outline until you zoom in for detail (still clickable for owner/deed)
-      if(this.map && this.map.getZoom() < PARCEL_DETAIL_ZOOM) return {stroke:false,fill:true,fillColor:'#000',fillOpacity:0.001};
-    }
+    if(this.zoningView){ const z=this.zoneByPin[this.featPin(ft)]; if(z){ if(z.split) return {color:'#6b5300',weight:1,fillColor:'#000',fillOpacity:0.001}; const j=jurById(z.jur)||ZJURS[0]; const c=(j.colors&&j.colors[z.zone])||'#888'; return {color:'#6b5300',weight:1,fillColor:c,fillOpacity:0.55}; } }
     return {color:'#ffd24d',weight:1,fillColor:'#000',fillOpacity:0.001};
   }
   private restyleParcels(): void { try{ if(this.parcelLayer) this.parcelLayer.setStyle((ft:any)=>this.parcelStyle(ft)); }catch(e){} }
