@@ -238,6 +238,7 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
       e.preventDefault();
       this.onAct(t.getAttribute('data-act'), t.getAttribute('data-id'), t.getAttribute('data-arg'));
     });
+    document.addEventListener('keydown', (e:any) => { if(e.key==='Escape'){ const fsEl=this.domElement.querySelector('.dls-pm.fs'); if(fsEl) this.toggleFs(); } });
     return Promise.resolve();
   }
 
@@ -258,7 +259,11 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
         .dls-pm .sp{flex:1;}
         .dls-pm #status{font-size:11px;color:#9fb0c3;white-space:nowrap;}
         .dls-pm .stage{position:relative;}
-        .dls-pm #map{height:640px;border:1px solid #e5e7eb;border-top:none;border-radius:0 0 8px 8px;}
+        .dls-pm #map{height:calc(100vh - 250px);min-height:500px;border:1px solid #e5e7eb;border-top:none;border-radius:0 0 8px 8px;}
+        .dls-pm.fs{position:fixed;inset:0;z-index:100000;background:#1f2a37;display:flex;flex-direction:column;border-radius:0;}
+        .dls-pm.fs .bar{border-radius:0;}
+        .dls-pm.fs .stage{flex:1;min-height:0;}
+        .dls-pm.fs #map{height:100% !important;min-height:0;border-radius:0;border:none;}
         .dls-pm #results{position:absolute;z-index:1000;top:8px;left:8px;width:290px;max-height:75%;overflow:auto;background:#fff;border:1px solid #cbd5e1;border-radius:8px;box-shadow:0 6px 20px rgba(0,0,0,.18);display:none;}
         .dls-pm #results h4{margin:0;padding:8px 10px;background:#1f2a37;color:#fff;font-size:12px;border-radius:8px 8px 0 0;display:flex;justify-content:space-between;}
         .dls-pm #results h4 .x{cursor:pointer;color:#cbd5e1;font-weight:700;}
@@ -320,6 +325,7 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
           <span class="sp"></span>
           <select id="base"><option value="aerial">Aerial</option><option value="streets">Streets</option><option value="topo">Topo</option></select>
           <select id="zmode" title="RBS zoning layer"><option value="off">Zoning: Off</option><option value="view">Zoning: View</option><option value="edit">Zoning: Edit (tag lots)</option></select>
+          <button id="fs" class="ghost" title="Full screen (Esc to exit)">Full screen</button>
           <span id="status">Loading&hellip;</span>
         </div>
         <div class="stage">
@@ -340,6 +346,7 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
     $('#rclose').onclick = ()=>{ $('#results').style.display='none'; };
     $('#base').onchange = (e:any)=>this.setBase(e.target.value);
     $('#zmode').onchange = (e:any)=>this.setZoningMode(e.target.value);
+    $('#fs').onclick = ()=>this.toggleFs();
     this.buildMap();
     this.buildZPanel();
   }
@@ -870,6 +877,13 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
     const m=this.areaMarkers||[]; for(let i=0;i<m.length;i++){ try{this.map.removeLayer(m[i]);}catch(e){} } this.areaMarkers=[];
     if(this.areaLine){ try{this.map.removeLayer(this.areaLine);}catch(e){} this.areaLine=null; }
     this.areaState=null;
+  }
+
+  private toggleFs(): void {
+    const el=this.domElement.querySelector('.dls-pm') as any; if(!el) return;
+    const on=!el.classList.contains('fs'); if(on){ el.classList.add('fs'); } else { el.classList.remove('fs'); }
+    const b=this.domElement.querySelector('#fs') as any; if(b) b.textContent = on?'Exit full screen':'Full screen';
+    setTimeout(()=>{ try{ this.map.invalidateSize(); }catch(e){} }, 60);
   }
 
   private setStatus(t:string): void { const el=this.domElement.querySelector('#status'); if(el) el.textContent=t; }
