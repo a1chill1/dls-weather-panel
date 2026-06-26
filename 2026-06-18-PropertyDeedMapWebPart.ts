@@ -219,10 +219,17 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
   private zoneByPin:any = {}; private zoningView=false; private zoningEdit=false;
   private zTarget:any = null; private loadSeq=0; private tagJur:string='auto';
   private splitState:any=null; private splitLayer:any=null; private splitTmp:any[]=[]; private splitMarkers:any[]=[]; private _splitClick:any=null;
+  private femaLayer:any=null; private _femaOn=false; private areasLayer:any=null; private _areasRenderer:any=null; private areas:any[]=[]; private _areasOn=false;
+  private areaState:any=null; private areaMarkers:any[]=[]; private areaLine:any=null; private _areaClick:any=null;
 
   protected onInit(): Promise<void> {
     if (!document.getElementById('dls-leaflet-css')) {
       const st = document.createElement('style'); st.id='dls-leaflet-css'; st.textContent = LEAFLET_CSS; document.head.appendChild(st);
+    }
+    if (!document.getElementById('dls-hatch-svg')) {
+      const hd = document.createElement('div'); hd.id='dls-hatch-svg'; hd.style.cssText='position:absolute;width:0;height:0;overflow:hidden';
+      hd.innerHTML='<svg width="0" height="0"><defs><pattern id="dls-hatch" patternUnits="userSpaceOnUse" width="8" height="8"><path d="M0,8 L8,0" stroke="#444" stroke-width="1"/><path d="M0,0 L8,8" stroke="#444" stroke-width="1"/></pattern></defs></svg>';
+      document.body.appendChild(hd);
     }
     // ONE delegated listener for popup buttons (data-act). domElement persists across renders.
     this.domElement.addEventListener('click', (e:any) => {
@@ -350,6 +357,11 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
     this.map.createPane('zoning'); this.map.getPane('zoning').style.zIndex='350'; this.map.getPane('zoning').style.pointerEvents='none';
     this.map.createPane('zsplit'); this.map.getPane('zsplit').style.zIndex='420'; this.map.getPane('zsplit').style.pointerEvents='none';
     this.splitLayer = L.layerGroup().addTo(this.map);
+    this.map.createPane('areas'); this.map.getPane('areas').style.zIndex='430'; this.map.getPane('areas').style.pointerEvents='none';
+    this._areasRenderer = L.svg({pane:'areas'}); this._areasRenderer.addTo(this.map);
+    this.areasLayer = L.layerGroup().addTo(this.map);
+    const FemaTiles:any = L.TileLayer.extend({ getTileUrl:function(coords:any){ const map=this._map; const ts=this.getTileSize(); const nw=map.unproject(L.point(coords.x*ts.x,coords.y*ts.y),coords.z); const se=map.unproject(L.point((coords.x+1)*ts.x,(coords.y+1)*ts.y),coords.z); const a=L.CRS.EPSG3857.project(nw), b=L.CRS.EPSG3857.project(se); const bbox=Math.min(a.x,b.x)+','+Math.min(a.y,b.y)+','+Math.max(a.x,b.x)+','+Math.max(a.y,b.y); return 'https://hazards.fema.gov/arcgis/rest/services/public/NFHL/MapServer/export?bbox='+bbox+'&bboxSR=3857&imageSR=3857&size='+ts.x+','+ts.y+'&dpi=96&format=png32&transparent=true&f=image'; } });
+    this.femaLayer = new FemaTiles('', {tileSize:256, opacity:0.55, pane:'zoning', maxZoom:20, attribution:'Flood data © FEMA NFHL'});
     ZJURS.forEach((j:any)=>{ j._layer = L.imageOverlay(this.zoningAssetBase+j.file, j.bounds, {opacity:j.opacity, interactive:false, pane:'zoning'}); j._on = false; });
     this.parcelLayer = L.geoJSON(null,{ style:(ft:any)=>this.parcelStyle(ft), onEachFeature:(ft:any,layer:any)=>this.onFeat(ft,layer) }).addTo(this.map);
     this.hiLayer = L.geoJSON(null,{ style:{color:'#ff2d55',weight:3,fill:false} }).addTo(this.map);
@@ -358,6 +370,7 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
     setTimeout(()=>{ try{ this.map.invalidateSize(); }catch(e){} this.loadParcels(); },400);
     window.addEventListener('resize',()=>{ clearTimeout(this.rzTimer); this.rzTimer=setTimeout(()=>{ try{ if(this.map) this.map.invalidateSize(); }catch(e){} },200); });
     this.loadZoning();
+    this.loadAreas();
   }
 
   private setBase(v:string): void {
@@ -420,7 +433,7 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
   private onFeat(feat:any, layer:any): void {
     // Standalone MAP popup (NOT bound to the parcel layer) so a parcel reload can't close it → no re-clicking.
     layer.on('click',(ev:any)=>{
-      if(this.splitState) return;
+      if(this.splitState||this.areaState) return;
       const src=SOURCES.filter((s)=>s.id===feat.properties.__src)[0]||SOURCES[0];
       const n=normalize(feat.properties,src);
       const ll=(ev&&ev.latlng)||(layer.getBounds&&layer.getBounds().getCenter());
@@ -490,6 +503,9 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
     else if(act==='zpz'){ const p=(arg||'').split('|'); this.setPieceZone(+p[0], p[1]); }
     else if(act==='zsplitsave') this.saveSplit();
     else if(act==='zsplitcancel') this.cancelSplit();
+    else if(act==='zareafinish') this.finishAreaDraw();
+    else if(act==='zareacancel') this.cancelAreaDraw();
+    else if(act==='zareasave') this.saveArea(arg);
   }
 
   private openDeferred(): any { const w=window.open('','_blank'); try{ if(w) w.document.write('<p style="font:14px/1.4 sans-serif;padding:18px;color:#333">Looking up the latest deed…</p>'); }catch(e){} return w; }
@@ -589,12 +605,20 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
     });
     h+='<div class="zdiv"></div>';
     ZJURS.forEach((j:any)=>{ if(!j.taggable) return; h+='<div class="zjh">'+j.name+'</div>'; j.zones.forEach((z:string)=>{ h+='<div class="zi"><span class="zsw" style="background:'+j.colors[z]+'"></span>'+z+' &middot; '+j.names[z]+'</div>'; }); });
-    h+='<div class="zdisc">Lafayette &amp; Macon overlays are <b>approximate</b> &mdash; nudge opacity, use judgment near boundaries. Use "Tag lots as" to lock a jurisdiction for edge lots. Confirm zoning with the city/county.</div>';
+    h+='<div class="zdiv"></div><div class="zjh">Other layers</div>';
+    h+='<div class="zrow"><label><input type="checkbox" id="zfema"'+(this._femaOn?' checked':'')+'> FEMA flood (NFHL)</label><span class="zacc exact">live</span><input type="range" min="20" max="100" value="'+(this.femaLayer&&this.femaLayer.options?Math.round(this.femaLayer.options.opacity*100):55)+'" id="zfemaop"></div>';
+    h+='<div class="zrow"><label><input type="checkbox" id="zareas"'+(this._areasOn?' checked':'')+'> Drawn areas (historic dist.)</label></div>';
+    if(this.zoningEdit) h+='<button class="zbtn2" id="zdrawarea" style="margin-top:4px">Draw an area&hellip;</button>';
+    h+='<div class="zdisc">Lafayette &amp; Macon overlays are <b>approximate</b> &mdash; nudge opacity, use judgment near boundaries. Use "Tag lots as" to lock a jurisdiction for edge lots. FEMA flood is the official 1% layer. Confirm zoning with the city/county.</div>';
     el.innerHTML=h;
     const self=this;
     const ts=el.querySelector('#ztagjur') as any; if(ts){ ts.value=this.tagJur; ts.addEventListener('change',function(e:any){ self.tagJur=e.target.value; }); }
     const cbs=el.querySelectorAll('[data-zov]'); for(let i=0;i<cbs.length;i++){ cbs[i].addEventListener('change',function(e:any){ const j=jurById(e.target.getAttribute('data-zov')); if(j){ j._on=!!e.target.checked; self.applyOverlays(); } }); }
     const sls=el.querySelectorAll('[data-zop]'); for(let i=0;i<sls.length;i++){ sls[i].addEventListener('input',function(e:any){ const j=jurById(e.target.getAttribute('data-zop')); if(j&&j._layer){ j.opacity=(+e.target.value)/100; j._layer.setOpacity(j.opacity); } }); }
+    const fm=el.querySelector('#zfema') as any; if(fm) fm.addEventListener('change',function(e:any){ self._femaOn=!!e.target.checked; self.applyFema(); });
+    const fo=el.querySelector('#zfemaop') as any; if(fo) fo.addEventListener('input',function(e:any){ if(self.femaLayer) self.femaLayer.setOpacity((+e.target.value)/100); });
+    const ar=el.querySelector('#zareas') as any; if(ar) ar.addEventListener('change',function(e:any){ self._areasOn=!!e.target.checked; self.buildAreasLayer(); });
+    const da=el.querySelector('#zdrawarea') as any; if(da) da.addEventListener('click',function(){ self.startAreaDraw(); });
   }
 
   private setZoningMode(v:string): void {
@@ -605,6 +629,8 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
     this.applyOverlays();
     this.restyleParcels();
     this.buildSplitLayer();
+    this.applyFema();
+    this.buildAreasLayer();
     if(v==='edit') this.setStatus('Zoning EDIT — set "Tag lots as" if needed, click a lot, choose its zone. Reference only.');
     else if(v==='view') this.setStatus('Zoning VIEW — tagged lots are colored by their district.');
     else this.setStatus('Zoning off.');
@@ -775,6 +801,75 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
     if(!this.splitLayer) return; this.splitLayer.clearLayers();
     if(!this.zoningView) return; const m=this.zoneByPin; const self=this;
     Object.keys(m).forEach((pin)=>{ const z=m[pin]; if(z&&z.split&&z.pieces){ z.pieces.forEach((p:any)=>{ if(!p.z||!p.r||p.r.length<3) return; const latlngs=p.r.map((c:any)=>[c[1],c[0]]); self.splitLayer.addLayer(L.polygon(latlngs,{color:'#6b5300',weight:1,fillColor:self.jurColor(z.jur,p.z),fillOpacity:0.55,interactive:false,pane:'zsplit'})); }); } });
+  }
+
+  // ======================= FEMA flood + drawn areas =======================
+  private apiList(title:string): string { return this.context.pageContext.web.absoluteUrl + "/_api/web/lists/getbytitle('" + title.replace(/'/g,"''") + "')"; }
+
+  private applyFema(): void { if(!this.femaLayer) return; if(this._femaOn && this.zoningView){ if(!this.map.hasLayer(this.femaLayer)){ this.femaLayer.addTo(this.map); } } else if(this.map.hasLayer(this.femaLayer)){ this.map.removeLayer(this.femaLayer); } }
+
+  private loadAreas(): void {
+    this.spGet(this.apiList('DLS Map Areas')+'/items?$select=Id,AreaType,Jurisdiction,AreaGeoJSON&$top=2000').then((d:any)=>{
+      const items=(d&&d.value)||[]; const arr:any[]=[];
+      items.forEach((it:any)=>{ let ring=null; if(it.AreaGeoJSON){ try{ ring=JSON.parse(it.AreaGeoJSON); }catch(e){} } if(ring&&ring.length>=3) arr.push({id:it.Id,type:it.AreaType,jur:it.Jurisdiction,ring:ring}); });
+      this.areas=arr; this.buildAreasLayer();
+    }).catch(()=>{ /* list missing / no access */ });
+  }
+
+  private buildAreasLayer(): void {
+    if(!this.areasLayer) return; this.areasLayer.clearLayers();
+    if(!this.zoningView || !this._areasOn) return; const self=this;
+    (this.areas||[]).forEach((a:any)=>{
+      const latlngs=a.ring.map((c:any)=>[c[1],c[0]]); const isHist=(a.type==='Historic District'); const isFlood=(a.type==='Floodplain');
+      const poly=L.polygon(latlngs,{renderer:self._areasRenderer,pane:'areas',color:isFlood?'#1d4ed8':'#333',weight:isFlood?3:1.5,fill:isHist,fillColor:'#000',fillOpacity:0,interactive:false});
+      poly.addTo(self.areasLayer);
+      if(isHist){ const patch=function(){ try{ if(poly._path){ poly._path.setAttribute('fill','url(#dls-hatch)'); poly._path.setAttribute('fill-opacity','1'); } }catch(e){} }; patch(); poly.on('add',patch); }
+    });
+  }
+
+  private startAreaDraw(): void {
+    this.clearAreaDraw(); this.areaState={pts:[]};
+    this._areaClick=(e:any)=>this.onAreaClick(e); this.map.on('click',this._areaClick);
+    this.setStatus('Draw area: click points around the boundary, then Finish.');
+    L.popup({closeOnClick:false,autoClose:false,maxWidth:215}).setLatLng(this.map.getCenter()).setContent('<div class="zp"><div class="zp-h">Draw an area</div><div class="zp-note">Click points around the boundary on the map (3+). Then Finish.</div><button class="zp-save" data-act="zareafinish">Finish</button> <button class="zp-clear" data-act="zareacancel">Cancel</button></div>').openOn(this.map);
+  }
+
+  private onAreaClick(e:any): void {
+    const st=this.areaState; if(!st) return; st.pts.push([e.latlng.lng,e.latlng.lat]);
+    this.areaMarkers.push(L.circleMarker(e.latlng,{renderer:this._areasRenderer,pane:'areas',radius:3,color:'#7c3aed',weight:2,fill:true,fillColor:'#7c3aed',fillOpacity:1,interactive:false}).addTo(this.map));
+    const latlngs=st.pts.map((c:any)=>[c[1],c[0]]);
+    if(this.areaLine){ try{this.map.removeLayer(this.areaLine);}catch(e2){} }
+    this.areaLine=L.polyline(latlngs,{renderer:this._areasRenderer,pane:'areas',color:'#7c3aed',weight:2,dashArray:'4,3',interactive:false}).addTo(this.map);
+    this.setStatus('Area: '+st.pts.length+' point(s). Click more, then Finish.');
+  }
+
+  private finishAreaDraw(): void {
+    const st=this.areaState; if(!st) return; if(st.pts.length<3){ this.setStatus('Add at least 3 points first.'); return; }
+    this.map.closePopup();
+    const html='<div class="zp"><div class="zp-h">Save area</div><div class="zp-note">What is this area?</div>'
+      +'<div class="sp-opts"><button class="zbtn2" data-act="zareasave" data-arg="Historic District">Historic District (hatch)</button>'
+      +'<button class="zbtn2" data-act="zareasave" data-arg="Floodplain">Floodplain (blue outline)</button>'
+      +'<button class="zbtn2" data-act="zareasave" data-arg="Other">Other</button></div>'
+      +'<button class="zp-clear" data-act="zareacancel">Cancel</button></div>';
+    L.popup({closeOnClick:false,autoClose:false,maxWidth:230}).setLatLng(this.map.getCenter()).setContent(html).openOn(this.map);
+  }
+
+  private saveArea(type:string): void {
+    const st=this.areaState; if(!st||st.pts.length<3) return;
+    const ring=st.pts.slice(); const c=centroid(ring); const jj=jurAt({lat:c[1],lng:c[0]})||nearestJur({lat:c[1],lng:c[0]}); const jur=jj?jj.id:'RBS';
+    const body:any={Title:type+' ('+jur+')', AreaType:type, Jurisdiction:jur, AreaGeoJSON:JSON.stringify(ring)};
+    this.spPost(this.apiList('DLS Map Areas')+'/items', body).then((r:any)=>{ if(r.status>=200&&r.status<300) return r.json(); throw new Error('HTTP '+r.status); })
+      .then((d:any)=>{ if(!this.areas) this.areas=[]; this.areas.push({id:d&&d.Id,type:type,jur:jur,ring:ring}); this.clearAreaDraw(); this.map.closePopup(); this._areasOn=true; const ar=this.domElement.querySelector('#zareas') as any; if(ar) ar.checked=true; this.buildAreasLayer(); this.setStatus('Saved '+type+'.'); })
+      .catch((e:any)=>this.setStatus('Save area failed: '+e));
+  }
+
+  private cancelAreaDraw(): void { this.clearAreaDraw(); this.map.closePopup(); this.setStatus('Area drawing cancelled.'); }
+
+  private clearAreaDraw(): void {
+    if(this._areaClick){ this.map.off('click',this._areaClick); this._areaClick=null; }
+    const m=this.areaMarkers||[]; for(let i=0;i<m.length;i++){ try{this.map.removeLayer(m[i]);}catch(e){} } this.areaMarkers=[];
+    if(this.areaLine){ try{this.map.removeLayer(this.areaLine);}catch(e){} this.areaLine=null; }
+    this.areaState=null;
   }
 
   private setStatus(t:string): void { const el=this.domElement.querySelector('#status'); if(el) el.textContent=t; }
