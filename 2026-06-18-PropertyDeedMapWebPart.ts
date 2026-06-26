@@ -162,7 +162,7 @@ const MINZOOM = 15;
 // ---- Self-tagged zoning layer (reference only), jurisdiction-aware ----
 // Each entry = one adopted map: bounds [[S,W],[N,E]] + its OWN districts/colors/names.
 // RBS georef is EXACT; Lafayette & Macon are APPROXIMATE (opacity slider + 'approx' badge).
-// Macon county sheet has no color key → background reference only (taggable:false).
+// RBS/Lafayette/Macon all taggable; "Tag lots as" picks the jurisdiction (auto = most-specific at the click).
 const ZJURS: any[] = [
   { id:'RBS', name:'Red Boiling Springs', file:'rbs_zoning_overlay.webp', accuracy:'exact', taggable:true,
     bounds:[[36.51467,-85.87444],[36.54963,-85.831]], opacity:0.62,
@@ -174,12 +174,16 @@ const ZJURS: any[] = [
     zones:['R-1','R-2','C-1','C-2','M','I-1'],
     colors:{'R-1':'#FBE10A','R-2':'#F2A23B','C-1':'#E8332E','C-2':'#F3A0C0','M':'#B59BC9','I-1':'#5BB8E8'},
     names:{'R-1':'Low Density Residential','R-2':'High Density Residential','C-1':'Central Business','C-2':'General Business','M':'Mixed Commercial / Industrial','I-1':'Light Industrial'} },
-  { id:'Macon', name:'Macon County (overall)', file:'macon_zoning_overlay.webp', accuracy:'approx', taggable:false,
-    bounds:[[36.42805,-86.22837],[36.66132,-85.76304]], opacity:0.55, zones:[], colors:{}, names:{} }
+  { id:'Macon', name:'Macon County', file:'macon_zoning_overlay.webp', accuracy:'approx', taggable:true,
+    bounds:[[36.42805,-86.22837],[36.66132,-85.76304]], opacity:0.55,
+    zones:['A-1','R-1','R-2','C-1','I-1','I-2'],
+    colors:{'A-1':'#CFE0A8','R-1':'#FBE10A','R-2':'#F2A23B','C-1':'#E8332E','I-1':'#C840C8','I-2':'#F58FD0'},
+    names:{'A-1':'Agricultural','R-1':'Residential','R-2':'Residential (high density)','C-1':'Commercial','I-1':'Industrial','I-2':'Industrial (heavy)'} }
 ];
 function pinKey(s:any){ return (s==null?'':String(s)).toUpperCase().replace(/\s+/g,' ').trim(); }
 function jurById(id:any){ for(let i=0;i<ZJURS.length;i++){ if(ZJURS[i].id===id) return ZJURS[i]; } return null; }
 function jurAt(ll:any){ let best:any=null, ba=Infinity; ZJURS.forEach((j:any)=>{ if(!j.taggable) return; const b=j.bounds; if(ll.lat>=b[0][0]&&ll.lat<=b[1][0]&&ll.lng>=b[0][1]&&ll.lng<=b[1][1]){ const area=(b[1][0]-b[0][0])*(b[1][1]-b[0][1]); if(area<ba){ ba=area; best=j; } } }); return best; }
+function nearestJur(ll:any){ let best:any=null, bd=Infinity; ZJURS.forEach((j:any)=>{ if(!j.taggable) return; const b=j.bounds; const cy=(b[0][0]+b[1][0])/2, cx=(b[0][1]+b[1][1])/2; const d=(ll.lat-cy)*(ll.lat-cy)+(ll.lng-cx)*(ll.lng-cx); if(d<bd){ bd=d; best=j; } }); return best; }
 
 // ---- module-scope pure helpers ----
 function esc(s: any): string { return (s==null?'':String(s)).replace(/[&<>"]/g, (c:string)=>(({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'} as any)[c])); }
@@ -205,7 +209,7 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
   private inflight:any[] = []; private loadTimer:any = null; private rzTimer:any = null;
   private loadedBounds:any = null; private loadedZoom:number = -1;
   private zoneByPin:any = {}; private zoningView=false; private zoningEdit=false;
-  private zTarget:any = null;
+  private zTarget:any = null; private loadSeq=0; private tagJur:string='auto';
 
   protected onInit(): Promise<void> {
     if (!document.getElementById('dls-leaflet-css')) {
@@ -268,6 +272,8 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
         .dls-pm #zlegend .zacc.exact{background:#dcfce7;color:#166534;} .dls-pm #zlegend .zacc.approx{background:#fef3c7;color:#92400e;}
         .dls-pm #zlegend .zdiv{border-top:1px solid #cbd5e1;margin:6px 0;}
         .dls-pm #zlegend .zjh{font-weight:700;font-size:10.5px;margin:5px 0 2px;color:#334155;}
+        .dls-pm #zlegend .ztag{margin:5px 0 7px;font-size:11px;color:#334155;}
+        .dls-pm #zlegend .ztag select{font-size:11px;padding:2px 4px;margin-top:2px;max-width:100%;}
         .zp{font-family:'Segoe UI',Arial,sans-serif;min-width:212px;} .zp .zp-h{font-weight:700;font-size:13px;margin-bottom:2px;}
         .zp .zp-pin,.zp .zp-cur{font-size:11px;color:#475569;} .zp .zp-cur{margin-bottom:6px;}
         .zp .zp-grid{display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-bottom:6px;}
@@ -323,7 +329,7 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
     this.bases.aerial.addTo(this.map);
     this.labels = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}',{maxZoom:20,opacity:.9}).addTo(this.map);
     this.map.createPane('zoning'); this.map.getPane('zoning').style.zIndex='350'; this.map.getPane('zoning').style.pointerEvents='none';
-    ZJURS.forEach((j:any)=>{ j._layer = L.imageOverlay(this.zoningAssetBase+j.file, j.bounds, {opacity:j.opacity, interactive:false, pane:'zoning'}); j._on = (j.id!=='Macon'); });
+    ZJURS.forEach((j:any)=>{ j._layer = L.imageOverlay(this.zoningAssetBase+j.file, j.bounds, {opacity:j.opacity, interactive:false, pane:'zoning'}); j._on = false; });
     this.parcelLayer = L.geoJSON(null,{ style:(ft:any)=>this.parcelStyle(ft), onEachFeature:(ft:any,layer:any)=>this.onFeat(ft,layer) }).addTo(this.map);
     this.hiLayer = L.geoJSON(null,{ style:{color:'#ff2d55',weight:3,fill:false} }).addTo(this.map);
     this.map.on('moveend',()=>{ clearTimeout(this.loadTimer); this.loadTimer=setTimeout(()=>this.maybeLoad(),250); });
@@ -365,17 +371,18 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
 
   private loadParcels(): void {
     this.inflight.forEach((c)=>{ try{c.abort();}catch(e){} }); this.inflight=[];
+    const mySeq = ++this.loadSeq;   // anti-flicker: a stale load must not clobber a newer one
     const legsrc = this.domElement.querySelector('#legsrc') as any;
     if(this.map.getZoom()<MINZOOM){ this.parcelLayer.clearLayers(); this.loadedBounds=null; this.loadedZoom=-1; this.setStatus('Zoom in to load parcels (zoom ≥ '+MINZOOM+')'); if(legsrc) legsrc.textContent='Active data: —'; return; }
     const srcs=this.activeSources();
     if(srcs.length===0){ this.parcelLayer.clearLayers(); this.loadedBounds=null; this.setStatus('No parcel source covers this view'); return; }
     if(legsrc) legsrc.textContent='Active data: '+srcs.map((s)=>s.label.replace(/^..? — /,'')).join(', ');
-    const pb=this.map.getBounds().pad(0.4); this.loadedBounds=pb; this.loadedZoom=this.map.getZoom();
+    const pb=this.map.getBounds().pad(0.6); this.loadedBounds=pb; this.loadedZoom=this.map.getZoom();
     const env=[pb.getWest(),pb.getSouth(),pb.getEast(),pb.getNorth()].join(',');
-    this.setStatus('Loading parcels…'); this.parcelLayer.clearLayers();
-    let got=0, done=0; const errs:string[]=[];
+    this.setStatus('Loading parcels…');   // keep the OLD parcels on screen until the new set is ready (no flash)
+    let got=0, done=0; const errs:string[]=[]; const acc:any[]=[];
     const short=(s:any)=>s.label.replace(/^..? — /,'');
-    const finish=()=>{ if(done===srcs.length) this.setStatus(got+' parcels'+(errs.length?'  · unavailable: '+errs.join('; '):'')); };
+    const finish=()=>{ if(mySeq!==this.loadSeq) return; if(done===srcs.length){ this.parcelLayer.clearLayers(); if(acc.length) this.parcelLayer.addData(acc); this.setStatus(got+' parcels'+(errs.length?'  · unavailable: '+errs.join('; '):'')); } };
     const httpsPage = (typeof location!=='undefined' && location.protocol==='https:');
     srcs.forEach((s)=>{
       if(httpsPage && /^http:\/\//i.test(s.url)){ errs.push(short(s)+' (HTTP-only — needs HTTPS proxy)'); done++; finish(); return; }
@@ -383,8 +390,7 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
       const url=s.url+'?'+qs({where:s.where||'1=1',geometry:env,geometryType:'esriGeometryEnvelope',inSR:4326,spatialRel:'esriSpatialRelIntersects',outFields:outFieldsFor(s),returnGeometry:true,outSR:4326,resultRecordCount:2000,f:'json'});
       this.arcgisFetch(url,ctrl.signal).then((d:any)=>{
         if(d.error) throw new Error(d.error.message||'service error');
-        const feats=esriToFeatures(d); feats.forEach((f:any)=>{ f.properties.__src=s.id; });
-        this.parcelLayer.addData(feats); got+=feats.length;
+        const feats=esriToFeatures(d); feats.forEach((f:any)=>{ f.properties.__src=s.id; acc.push(f); }); got+=feats.length;
       }).catch((e:any)=>{ if(e.name!=='AbortError') errs.push(short(s)+' ('+e.message+')'); })
         .then(()=>{ done++; finish(); });
     });
@@ -546,6 +552,9 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
   private buildZPanel(): void {
     const el=this.domElement.querySelector('#zlegend') as any; if(!el) return;
     let h='<b>Zoning reference maps</b>';
+    h+='<div class="ztag">Tag lots as: <select id="ztagjur"><option value="auto">Auto-detect</option>';
+    ZJURS.forEach((j:any)=>{ if(j.taggable) h+='<option value="'+j.id+'">'+esc(j.name)+'</option>'; });
+    h+='</select></div>';
     ZJURS.forEach((j:any)=>{
       h+='<div class="zrow"><label><input type="checkbox" data-zov="'+j.id+'"'+(j._on?' checked':'')+'> '+j.name+'</label>'
         +'<span class="zacc '+j.accuracy+'">'+j.accuracy+'</span>'
@@ -553,9 +562,10 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
     });
     h+='<div class="zdiv"></div>';
     ZJURS.forEach((j:any)=>{ if(!j.taggable) return; h+='<div class="zjh">'+j.name+'</div>'; j.zones.forEach((z:string)=>{ h+='<div class="zi"><span class="zsw" style="background:'+j.colors[z]+'"></span>'+z+' &middot; '+j.names[z]+'</div>'; }); });
-    h+='<div class="zdisc">Lafayette &amp; Macon overlays are <b>approximate</b> &mdash; nudge opacity, use judgment near boundaries. Macon county sheet = reference only (no tagging). Confirm zoning with the city/county.</div>';
+    h+='<div class="zdisc">Lafayette &amp; Macon overlays are <b>approximate</b> &mdash; nudge opacity, use judgment near boundaries. Use "Tag lots as" to lock a jurisdiction for edge lots. Confirm zoning with the city/county.</div>';
     el.innerHTML=h;
     const self=this;
+    const ts=el.querySelector('#ztagjur') as any; if(ts){ ts.value=this.tagJur; ts.addEventListener('change',function(e:any){ self.tagJur=e.target.value; }); }
     const cbs=el.querySelectorAll('[data-zov]'); for(let i=0;i<cbs.length;i++){ cbs[i].addEventListener('change',function(e:any){ const j=jurById(e.target.getAttribute('data-zov')); if(j){ j._on=!!e.target.checked; self.applyOverlays(); } }); }
     const sls=el.querySelectorAll('[data-zop]'); for(let i=0;i<sls.length;i++){ sls[i].addEventListener('input',function(e:any){ const j=jurById(e.target.getAttribute('data-zop')); if(j&&j._layer){ j.opacity=(+e.target.value)/100; j._layer.setOpacity(j.opacity); } }); }
   }
@@ -567,7 +577,7 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
     if(zl) zl.style.display = this.zoningView ? 'block' : 'none';
     this.applyOverlays();
     this.restyleParcels();
-    if(v==='edit') this.setStatus('Zoning EDIT — click a lot in RBS or Lafayette, pick its zone (read it from the adopted map underneath). Reference only.');
+    if(v==='edit') this.setStatus('Zoning EDIT — set "Tag lots as" if needed, click a lot, choose its zone. Reference only.');
     else if(v==='view') this.setStatus('Zoning VIEW — tagged lots are colored by their district.');
     else this.setStatus('Zoning off.');
     this.map.closePopup();
@@ -579,8 +589,8 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
 
   private openZonePicker(n:any, ll:any): void {
     const pin=pinKey(n.pin); if(!pin){ this.setStatus('This parcel has no ID — cannot tag it.'); return; }
-    const j=jurAt(ll);
-    if(!j){ this.setStatus('No taggable zoning here — tagging is for RBS & Lafayette (the Macon county sheet is reference-only).'); return; }
+    const j = (this.tagJur && this.tagJur!=='auto') ? jurById(this.tagJur) : (jurAt(ll) || nearestJur(ll));
+    if(!j){ this.setStatus('No zoning jurisdiction available to tag.'); return; }
     this.zTarget={pin:pin, raw:String(n.pin).trim(), jur:j.id};
     const cur=this.zoneByPin[pin];
     let g=''; j.zones.forEach((z:string)=>{ g+='<button class="zbtn" data-act="zset" data-arg="'+z+'" style="background:'+j.colors[z]+'">'+z+'<small>'+j.names[z]+'</small></button>'; });
