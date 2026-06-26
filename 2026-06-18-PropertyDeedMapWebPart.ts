@@ -157,7 +157,8 @@ const SOURCES: any[] = [
     search:{address:'ADDRESS',parcel:'PVA_PARCEL'} }
 ];
 
-const MINZOOM = 13;
+const MINZOOM = 14;
+const PARCEL_DETAIL_ZOOM = 15;  // in Zoning:View, untagged parcel outlines show only at/above this zoom (keeps the town overview clean)
 
 // ---- Self-tagged zoning layer (reference only), jurisdiction-aware ----
 // Each entry = one adopted map: bounds [[S,W],[N,E]] + its OWN districts/colors/names.
@@ -189,8 +190,34 @@ function nearestJur(ll:any){ let best:any=null, bd=Infinity; ZJURS.forEach((j:an
 function ringOpen(r:any){ if(!r||r.length<2) return r||[]; const a=r.slice(); if(a.length>1 && a[0][0]===a[a.length-1][0] && a[0][1]===a[a.length-1][1]) a.pop(); return a; }
 function ringBounds(r:any){ let mnx=Infinity,mny=Infinity,mxx=-Infinity,mxy=-Infinity; for(let i=0;i<r.length;i++){ const p=r[i]; if(p[0]<mnx)mnx=p[0]; if(p[0]>mxx)mxx=p[0]; if(p[1]<mny)mny=p[1]; if(p[1]>mxy)mxy=p[1]; } return [mnx,mny,mxx,mxy]; }
 function sideOf(P:any,A:any,B:any){ return (B[0]-A[0])*(P[1]-A[1])-(B[1]-A[1])*(P[0]-A[0]); }
-function clipHalf(ring:any,A:any,B:any,keepPos:boolean){ const out:any[]=[]; const n=ring.length; for(let i=0;i<n;i++){ const cur=ring[i], nxt=ring[(i+1)%n]; const sc=sideOf(cur,A,B), sn=sideOf(nxt,A,B); const cin=keepPos?sc>=0:sc<=0, nin=keepPos?sn>=0:sn<=0; if(cin) out.push(cur); if(cin!==nin && (sc-sn)!==0){ const t=sc/(sc-sn); out.push([cur[0]+t*(nxt[0]-cur[0]), cur[1]+t*(nxt[1]-cur[1])]); } } return out; }
-function splitByLine(pieces:any,A:any,B:any){ const res:any[]=[]; for(let i=0;i<pieces.length;i++){ const r=ringOpen(pieces[i]); const a=clipHalf(r,A,B,false), b=clipHalf(r,A,B,true); if(a.length>=3) res.push(a); if(b.length>=3) res.push(b); } return res; }
+// Robust split of a simple polygon ring by an INFINITE line (handles concave / irregular lots — no
+// half-plane "seam" bleed across a parcel boundary). Returns 1+ simple sub-rings that exactly tile the lot.
+function splitRingByLine(ringIn:any,A:any,B:any){
+  const ring=ringOpen(ringIn); const n=ring.length; if(n<3) return [ring];
+  let scale=1; for(let i=0;i<n;i++){ const ax=Math.abs(ring[i][0]), ay=Math.abs(ring[i][1]); if(ax>scale)scale=ax; if(ay>scale)scale=ay; }
+  const EPS=1e-9*scale;
+  const P:any[]=[]; const isX:any[]=[];
+  for(let i=0;i<n;i++){ const cur=ring[i], nxt=ring[(i+1)%n]; const sc=sideOf(cur,A,B), sn=sideOf(nxt,A,B); P.push(cur); isX.push(Math.abs(sc)<=EPS); if((sc>EPS&&sn<-EPS)||(sc<-EPS&&sn>EPS)){ const t=sc/(sc-sn); P.push([cur[0]+t*(nxt[0]-cur[0]),cur[1]+t*(nxt[1]-cur[1])]); isX.push(true); } }
+  const m=P.length;
+  const dirx=B[0]-A[0], diry=B[1]-A[1];
+  const par=(p:any)=>((p[0]-A[0])*dirx+(p[1]-A[1])*diry);
+  const xs:any[]=[]; for(let i=0;i<m;i++){ if(isX[i]) xs.push(i); }
+  if(xs.length<2) return [ring];
+  xs.sort((a:any,b:any)=>par(P[a])-par(P[b]));
+  const pair:any={}; for(let k=0;k+1<xs.length;k+=2){ pair[xs[k]]=xs[k+1]; pair[xs[k+1]]=xs[k]; }
+  const usedB:any[]=[]; for(let z=0;z<m;z++){ usedB[z]=false; }
+  const pieces:any[]=[];
+  for(let s=0;s<m;s++){
+    if(usedB[s]) continue;
+    const piece:any[]=[]; let i=s; let avc=true; let guard=0;
+    while(guard++ < 4*m+8){ piece.push(P[i]); if(isX[i] && (i in pair) && !avc){ i=pair[i]; avc=true; } else { usedB[i]=true; i=(i+1)%m; avc=false; } if(i===s) break; }
+    const cl:any[]=[]; for(let k=0;k<piece.length;k++){ const p=piece[k]; if(cl.length===0 || Math.abs(cl[cl.length-1][0]-p[0])>EPS || Math.abs(cl[cl.length-1][1]-p[1])>EPS) cl.push(p); }
+    let ar=0; for(let k=0;k<cl.length;k++){ const a=cl[k], b=cl[(k+1)%cl.length]; ar+=a[0]*b[1]-b[0]*a[1]; }
+    if(cl.length>=3 && Math.abs(ar)/2>EPS*EPS) pieces.push(cl);
+  }
+  return pieces.length?pieces:[ring];
+}
+function splitByLine(pieces:any,A:any,B:any){ let res:any[]=[]; for(let i=0;i<pieces.length;i++){ res=res.concat(splitRingByLine(pieces[i],A,B)); } return res; }
 function outerRing(geom:any){ if(!geom) return null; if(geom.type==='Polygon') return ringOpen(geom.coordinates[0]); if(geom.type==='MultiPolygon'){ let best:any=null, ba=-1; for(let i=0;i<geom.coordinates.length;i++){ const r=geom.coordinates[i][0]; const b=ringBounds(r); const area=(b[2]-b[0])*(b[3]-b[1]); if(area>ba){ ba=area; best=r; } } return best?ringOpen(best):null; } return null; }
 
 // ---- module-scope pure helpers ----
@@ -218,7 +245,7 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
   private loadedBounds:any = null; private loadedZoom:number = -1;
   private zoneByPin:any = {}; private zoningView=true; private zoningEdit=false;
   private zTarget:any = null; private loadSeq=0; private tagJur:string='auto';
-  private splitState:any=null; private splitLayer:any=null; private splitTmp:any[]=[]; private splitMarkers:any[]=[]; private _splitClick:any=null;
+  private splitState:any=null; private splitLayer:any=null; private splitTmp:any[]=[]; private splitMarkers:any[]=[]; private _splitClick:any=null; private _splitDrawPopup:any=null;
   private femaLayer:any=null; private _femaOn=false; private areasLayer:any=null; private _areasRenderer:any=null; private areas:any[]=[]; private _areasOn=false;
   private areaState:any=null; private areaMarkers:any[]=[]; private areaLine:any=null; private _areaClick:any=null;
 
@@ -355,7 +382,7 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
 
   private buildMap(): void {
     const mapEl = this.domElement.querySelector('#map');
-    this.map = L.map(mapEl,{minZoom:6,maxZoom:20}).setView([36.521,-86.029],13);
+    this.map = L.map(mapEl,{minZoom:6,maxZoom:20}).setView([36.521,-86.029],14);
     this.bases = {
       aerial: L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',{maxZoom:20,attribution:'Imagery © Esri'}),
       streets: L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}',{maxZoom:20,attribution:'© Esri'}),
@@ -375,6 +402,7 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
     this.parcelLayer = L.geoJSON(null,{ style:(ft:any)=>this.parcelStyle(ft), onEachFeature:(ft:any,layer:any)=>this.onFeat(ft,layer) }).addTo(this.map);
     this.hiLayer = L.geoJSON(null,{ style:{color:'#ff2d55',weight:3,fill:false} }).addTo(this.map);
     this.map.on('moveend',()=>{ clearTimeout(this.loadTimer); this.loadTimer=setTimeout(()=>this.maybeLoad(),250); });
+    this.map.on('zoomend',()=>{ try{ this.restyleParcels(); }catch(e){} });   // toggle untagged-parcel outlines at PARCEL_DETAIL_ZOOM
     this.setStatus('Pan/zoom to your area — parcels load at zoom '+MINZOOM+'+');
     setTimeout(()=>{ try{ this.map.invalidateSize(); }catch(e){} this.loadParcels(); },400);
     window.addEventListener('resize',()=>{ clearTimeout(this.rzTimer); this.rzTimer=setTimeout(()=>{ try{ if(this.map) this.map.invalidateSize(); }catch(e){} },200); });
@@ -596,7 +624,12 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
 
   private featPin(ft:any): string { const src=SOURCES.filter((s)=>s.id===ft.properties.__src)[0]||SOURCES[0]; return pinKey(pick(ft.properties, src.f.pin)); }
   private parcelStyle(ft:any): any {
-    if(this.zoningView){ const z=this.zoneByPin[this.featPin(ft)]; if(z){ if(z.split) return {color:'#6b5300',weight:1,fillColor:'#000',fillOpacity:0.001}; const j=jurById(z.jur)||ZJURS[0]; const c=(j.colors&&j.colors[z.zone])||'#888'; return {color:'#6b5300',weight:1,fillColor:c,fillOpacity:0.55}; } }
+    if(this.zoningView){
+      const z=this.zoneByPin[this.featPin(ft)];
+      if(z){ if(z.split) return {color:'#6b5300',weight:1,fillColor:'#000',fillOpacity:0.001}; const j=jurById(z.jur)||ZJURS[0]; const c=(j.colors&&j.colors[z.zone])||'#888'; return {color:'#6b5300',weight:1,fillColor:c,fillOpacity:0.55}; }
+      // untagged lot in Zoning:View — keep the town overview clean: hide the outline until you zoom in for detail (still clickable for owner/deed)
+      if(this.map && this.map.getZoom() < PARCEL_DETAIL_ZOOM) return {stroke:false,fill:true,fillColor:'#000',fillOpacity:0.001};
+    }
     return {color:'#ffd24d',weight:1,fillColor:'#000',fillOpacity:0.001};
   }
   private restyleParcels(): void { try{ if(this.parcelLayer) this.parcelLayer.setStyle((ft:any)=>this.parcelStyle(ft)); }catch(e){} }
@@ -715,7 +748,7 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
       this.splitState.lines=(kind==='draw2'?2:1);
       this.setStatus('Cut 1: click two points on the map for the line.');
       this._splitClick=(e:any)=>this.onSplitClick(e); this.map.on('click',this._splitClick);
-      L.popup({maxWidth:210,closeOnClick:false,autoClose:false}).setLatLng(t.ll||this.map.getCenter())
+      this._splitDrawPopup = L.popup({maxWidth:210,closeOnClick:false,autoClose:false}).setLatLng(t.ll||this.map.getCenter())
         .setContent('<div class="zp"><div class="zp-h">Drawing cut line'+(this.splitState.lines>1?'s':'')+'</div><div class="zp-note">Click <b>two points</b> on the map for each line ('+this.splitState.lines+' line'+(this.splitState.lines>1?'s':'')+'). Each extends across the lot.</div><button class="zp-clear" data-act="zsplitcancel">Cancel</button></div>')
         .openOn(this.map);
       return;
@@ -744,6 +777,7 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
 
   private finishSplitGeometry(): void {
     const st=this.splitState; if(!st) return;
+    if(this._splitDrawPopup){ try{ this.map.closePopup(this._splitDrawPopup); }catch(e){} this._splitDrawPopup=null; }
     if(!st.rings || st.rings.length<2){ this.setStatus('That line did not divide the lot — try again.'); this.cancelSplit(); return; }
     st.pieces=st.rings.map((r:any)=>({r:r, z:null}));
     this.renderSplitPreview(); this.openLabelPopup();
@@ -794,7 +828,7 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
     else { body.Title=st.raw; body.ParcelID=st.raw; this.spPost(this.listApi()+'/items', body).then((r:any)=>{ if(r.status>=200&&r.status<300) return r.json(); throw new Error('HTTP '+r.status); }).then((d:any)=>done(d&&d.Id)).catch((e:any)=>this.setStatus('Save failed: '+e)); }
   }
 
-  private cancelSplit(): void { if(this._splitClick){ this.map.off('click',this._splitClick); this._splitClick=null; } this.clearSplitPreview(); this.splitState=null; this.map.closePopup(); this.setStatus('Split cancelled.'); }
+  private cancelSplit(): void { if(this._splitClick){ this.map.off('click',this._splitClick); this._splitClick=null; } if(this._splitDrawPopup){ try{ this.map.closePopup(this._splitDrawPopup); }catch(e){} this._splitDrawPopup=null; } this.clearSplitPreview(); this.splitState=null; this.map.closePopup(); this.setStatus('Split cancelled.'); }
 
   private clearSplitPreview(): void { const a=this.splitTmp||[]; for(let i=0;i<a.length;i++){ try{this.map.removeLayer(a[i]);}catch(e){} } this.splitTmp=[]; const m=this.splitMarkers||[]; for(let i=0;i<m.length;i++){ try{this.map.removeLayer(m[i]);}catch(e){} } this.splitMarkers=[]; }
 
