@@ -249,7 +249,8 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
   public render(): void {
     this.domElement.innerHTML = `
       <style>
-        .dls-pm{font-family:'Segoe UI',Arial,sans-serif;color:#0f172a;width:98vw;position:relative;left:50%;margin-left:-49vw;box-sizing:border-box;}
+        .dls-pm{font-family:'Segoe UI',Arial,sans-serif;color:#0f172a;width:100%;box-sizing:border-box;}
+        @media (min-width:1300px) and (orientation:landscape){ .dls-pm{width:98vw;position:relative;left:50%;margin-left:-49vw;} }
         .dls-pm .bar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:#1f2a37;color:#fff;padding:7px 10px;border-radius:8px 8px 0 0;border-bottom:3px solid #f59e0b;}
         .dls-pm .bar strong{font-size:14px;}
         .dls-pm select,.dls-pm input{font-size:12.5px;padding:5px 7px;border:1px solid #3b4a5e;border-radius:5px;background:#fff;color:#0f172a;}
