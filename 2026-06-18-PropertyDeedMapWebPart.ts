@@ -790,9 +790,9 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
   private fetchWorkedChunks(list:string[], i:number, acc:any[]): void {
     const self=this;
     if(i>=list.length){ try{ self.workedGeomLayer.clearLayers(); if(acc.length) self.workedGeomLayer.addData(acc); }catch(e){} self.setStatus(acc.length+' surveyed lots shown.'); return; }
-    const chunk=list.slice(i,i+80); const inlist=chunk.map((x)=>"'"+x.replace(/'/g,"''")+"'").join(',');
+    const chunk=list.slice(i,i+25); const inlist=chunk.map((x)=>"'"+x.replace(/'/g,"''")+"'").join(',');
     const url=WK_TN_SVC+'?where='+encodeURIComponent('PARCELID IN ('+inlist+')')+'&outFields='+encodeURIComponent(outFieldsFor(SOURCES[0]))+'&returnGeometry=true&outSR=4326&resultRecordCount=2000&f=json';
-    this.arcgisFetch(url).then((d:any)=>{ const feats=esriToFeatures(d); for(let k=0;k<feats.length;k++){ feats[k].properties.__src='tn'; acc.push(feats[k]); } self.fetchWorkedChunks(list,i+80,acc); }).catch(()=>{ self.fetchWorkedChunks(list,i+80,acc); });
+    this.arcgisFetch(url).then((d:any)=>{ const feats=esriToFeatures(d); for(let k=0;k<feats.length;k++){ feats[k].properties.__src='tn'; acc.push(feats[k]); } self.fetchWorkedChunks(list,i+25,acc); }).catch(()=>{ self.fetchWorkedChunks(list,i+25,acc); });
   }
 
   // ================= v20: folder resolve by Job# (hybrid, no PA) =================
