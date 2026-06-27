@@ -336,7 +336,7 @@ const DLSWX_CSS = `
 @media (min-width:1300px) and (orientation:landscape){
 .dlswx-grid{grid-template-columns:auto minmax(200px,0.85fr) minmax(440px,1.6fr);grid-template-rows:auto auto;grid-template-areas:"rad now hour" "week week week";gap:18px 26px;padding:16px 22px;align-items:center}
 .dlswx-radar{align-self:start}
-.dlswx-radar img{width:560px;max-width:40vw;aspect-ratio:16/9}
+.dlswx-radar img{width:660px;max-width:42vw;aspect-ratio:16/9}
 .dlswx-now{align-self:center}
 .dlswx-hourwrap{align-self:center}
 .dlswx-current{flex-direction:column;align-items:flex-start;gap:10px}
