@@ -615,7 +615,7 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
     return {outline:'#0a5a27',fill:'#16a34a'};
   }
 
-  private countWorkedLots(m:any): number { let n=0; for(const k in m){ n++; } return n; }
+  private countWorkedLots(m:any): number { return Object.keys(m).length; }
 
   private loadWorked(): void {
     if(this._workLoaded) return;
@@ -656,7 +656,7 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
 
   private createWorked(x:any, parcelId:string, source:string, notes:string, cb:any): void {
     const body:any={Title:(parcelId||String(x.Title||x.Id)),ParcelID:parcelId||'',JobNumber:String(x.Title||''),JobName:x.JobLabel||'',FolderURL:x.FolderURL||'',County:String(x.County||''),TaxMap:String(x.Tax_x0020_Map||''),ParcelNo:String(x.Parcel_x0020_Number||''),WIPItemId:x.Id,Source:source,Notes:notes||''};
-    this.spPost(this.workedApi()+'/items', body).then((r:any)=>{ this.workedWipIds[x.Id]=1; if(cb)cb(); }).catch(()=>{ if(cb)cb(); });
+    this.spPost(this.workedApi()+'/items', body).then(()=>{ this.workedWipIds[x.Id]=1; if(cb)cb(); }).catch(()=>{ if(cb)cb(); });
   }
 
   private buildWorkPanel(): void {
@@ -669,7 +669,7 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
     const c=this.domElement.querySelector('#wCount'); if(c) c.textContent=this._workCount+' lots';
   }
 
-  private openWorkPicker(n:any, ll:any, feat?:any): void {
+  private openWorkPicker(n:any, ll:any, _feat?:any): void {
     const pin=pinKey(n.pin); if(!pin){ this.setStatus('This parcel has no ID — cannot mark it.'); return; }
     this.wTarget={pin:pin, raw:String(n.pin).trim(), ll:ll};
     this.renderWorkPicker();
