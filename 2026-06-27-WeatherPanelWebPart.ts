@@ -6,15 +6,16 @@
 // National Weather Service data: animated radar loop (RIDGE GIF), active weather
 // alerts, next-12h precip-chance timeline, and a 7-day forecast.
 //
-// v1.0.0.4 - FULL-BLEED width to match the Deed Map (98vw at >=1300px landscape,
-//   identical media query) + RADAR HERO. Three responsive layouts:
-//     * mobile  (<621px): everything stacks.
-//     * medium  (621-1299px / portrait): radar left, info column right (~the old look).
-//     * WIDE    (>=1300px landscape): big radar hero left, current + 12h timeline
-//       top-right, 7-day as a horizontal card strip across the bottom-right.
-//   Radar is now a clean 16:9 LANDSCAPE rectangle (object-fit:cover, framed
-//   slightly high) - crops the baked NWS legend/timestamp bars, keeps central TN
-//   + southern KY (Bowling Green/Elizabethtown) in view. Same NWS fetch logic.
+// v1.0.0.5 - READABILITY REBALANCE. The NWS loop GIF is only 600px native, so the
+//   v1.0.0.4 hero (~1355px wide) UPSCALED it ~2.3x -> pixelated. Fix:
+//     * Radar capped near its native width (<=560px) so it stays CRISP (no upscale),
+//       framed as a 16:9 landscape (keeps central TN + southern KY).
+//     * The freed space goes to a BIG, full-width 7-day strip (large cards, larger
+//       type + icons) so the forecast is easy to read.
+//   WIDE layout = top row [ crisp radar | current conditions | tall 12h timeline ]
+//   then a full-width 7-day card strip beneath. Still full-bleed 98vw to match the
+//   Deed Map. Medium = radar left + info right (7-day list). Mobile = stacked.
+//   Same NWS fetch logic / pinned IDs (upgrade in place).
 //
 // Durability: api.weather.gov + radar.weather.gov (US Gov, free, no key). Bundled,
 // no external script/CDN, no iframe. Every call wrapped -> fails safe, never breaks
@@ -62,11 +63,9 @@ export default class WeatherPanelWebPart extends BaseClientSideWebPart<IWeatherP
             <img id="dlswx-radar-img" alt="NWS radar loop" />
             <div class="dlswx-radar-cap">NOAA / NWS RIDGE radar &middot; loops ~1 hr</div>
           </div>
-          <div class="dlswx-side">
-            <div class="dlswx-now"><div id="dlswx-current" class="dlswx-current"></div></div>
-            <div class="dlswx-hourwrap"><div class="dlswx-sub">Next 12 hours</div><div id="dlswx-hourly" class="dlswx-hourly"></div></div>
-            <div class="dlswx-weekwrap"><div class="dlswx-sub">7-day outlook</div><div id="dlswx-7day" class="dlswx-7day"></div></div>
-          </div>
+          <div class="dlswx-now"><div id="dlswx-current" class="dlswx-current"></div></div>
+          <div class="dlswx-hourwrap"><div class="dlswx-sub">Next 12 hours</div><div id="dlswx-hourly" class="dlswx-hourly"></div></div>
+          <div class="dlswx-weekwrap"><div class="dlswx-sub">7-day outlook</div><div id="dlswx-7day" class="dlswx-7day"></div></div>
         </div>
         <div class="dlswx-foot">
           Data: NOAA / National Weather Service (api.weather.gov) &middot;
@@ -273,14 +272,14 @@ function shortName(n: string): string {
   return n.replace('This Afternoon', 'Today').replace('This Morning', 'Today');
 }
 
-// DARK theme, v1.0.0.4. Full-bleed (98vw) at wide-landscape to line up edge-to-edge
-// with the Deed Map; radar-hero 3-region reflow when wide; clean 16:9 landscape radar.
-// Scoped to .dlswx.
+// DARK theme, v1.0.0.5. Full-bleed (98vw) at wide-landscape to line up with the Deed
+// Map. Radar capped near native res (crisp). Wide = top row (radar | current | 12h)
+// + full-width 7-day card strip. Scoped to .dlswx.
 const DLSWX_CSS = `
 .dlswx{font-family:'Segoe UI',system-ui,sans-serif;color:#e6e4e2;border:1px solid #3b3a39;border-radius:8px;overflow:hidden;background:#1b1a19;box-shadow:0 1.6px 3.6px rgba(0,0,0,.45);width:100%;box-sizing:border-box}
 @media (min-width:1300px) and (orientation:landscape){.dlswx{width:98vw;position:relative;left:50%;margin-left:-49vw;border-radius:10px}}
 .dlswx *{box-sizing:border-box}
-.dlswx-head{display:flex;justify-content:space-between;align-items:center;padding:9px 16px;background:#0a2c49;color:#fff;border-bottom:1px solid #16334f}
+.dlswx-head{display:flex;justify-content:space-between;align-items:center;padding:10px 16px;background:#0a2c49;color:#fff;border-bottom:1px solid #16334f}
 .dlswx-title{font-size:16px;font-weight:600}
 .dlswx-loc{font-size:12px;opacity:.85;margin-left:8px}
 .dlswx-updated{font-size:11px;opacity:.8}
@@ -289,11 +288,15 @@ const DLSWX_CSS = `
 .dlswx-alert-sev{background:#3b1416;color:#f5a3a6;border:1px solid #7a2a2e}
 .dlswx-alert-mod{background:#3a3209;color:#f3e0a0;border:1px solid #7a6a1e}
 .dlswx-alert-h{display:block;font-weight:400;font-size:12px;margin-top:2px;opacity:.9}
-.dlswx-grid{display:flex;flex-direction:column;gap:14px;padding:12px 16px}
-.dlswx-radar{display:flex;flex-direction:column;min-width:0}
-.dlswx-side{display:flex;flex-direction:column;gap:12px;min-width:0}
-.dlswx-sub{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;color:#a19f9d;margin:0 0 5px}
-.dlswx-radar img{width:100%;aspect-ratio:16/9;object-fit:cover;object-position:center 40%;border:1px solid #3b3a39;border-radius:6px;display:block;background:#0f0f0f}
+
+/* GRID base = mobile stack */
+.dlswx-grid{display:grid;grid-template-columns:1fr;gap:14px;padding:12px 16px;grid-template-areas:"rad" "now" "hour" "week"}
+.dlswx-radar{grid-area:rad;display:flex;flex-direction:column;min-width:0}
+.dlswx-now{grid-area:now;min-width:0}
+.dlswx-hourwrap{grid-area:hour;min-width:0}
+.dlswx-weekwrap{grid-area:week;min-width:0}
+.dlswx-sub{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;color:#a19f9d;margin:0 0 6px}
+.dlswx-radar img{width:100%;max-width:560px;aspect-ratio:16/9;object-fit:cover;object-position:center 40%;border:1px solid #3b3a39;border-radius:6px;display:block;background:#0f0f0f}
 .dlswx-radar-cap{font-size:11px;color:#7a7775;margin-top:4px}
 .dlswx-current{display:flex;align-items:center;gap:12px;margin:0}
 .dlswx-cur-icon{width:50px;height:50px;border-radius:6px;background:#2d2c2b}
@@ -303,7 +306,7 @@ const DLSWX_CSS = `
 .dlswx-hourly{display:flex;gap:4px;overflow-x:auto;padding-bottom:2px}
 .dlswx-hr{flex:0 0 auto;width:32px;text-align:center}
 .dlswx-hr-t{font-size:10px;color:#a19f9d}
-.dlswx-hr-bar{height:40px;width:13px;margin:2px auto;background:#2d2c2b;border-radius:3px;display:flex;align-items:flex-end;overflow:hidden}
+.dlswx-hr-bar{height:44px;width:13px;margin:2px auto;background:#2d2c2b;border-radius:3px;display:flex;align-items:flex-end;overflow:hidden}
 .dlswx-hr-fill{width:100%;background:#4a90d9}
 .dlswx-hr-fill.dlswx-pop-hi{background:#2b88e0}
 .dlswx-hr-p{font-size:10px;color:#7fb1de;font-weight:600}
@@ -323,40 +326,39 @@ const DLSWX_CSS = `
 .dlswx-foot a{color:#7fb1de}
 .dlswx-err{font-size:12px;color:#a19f9d;font-style:italic;padding:6px 0}
 
-/* MEDIUM - normal section width: radar left, info column right (close to the original look) */
+/* MEDIUM (normal section width): radar left, info column right, 7-day list */
 @media (min-width:621px){
-.dlswx-grid{flex-direction:row;align-items:stretch}
-.dlswx-radar{flex:1 1 50%;min-width:280px}
-.dlswx-side{flex:1 1 50%}
+.dlswx-grid{grid-template-columns:minmax(300px,1fr) minmax(320px,1.1fr);grid-template-areas:"rad now" "rad hour" "rad week";gap:14px 20px;align-items:start}
+.dlswx-radar{align-self:center}
 }
 
-/* WIDE - full-bleed (matches the Deed Map): big radar hero + 12h top-right + 7-day strip across the bottom */
+/* WIDE (full-bleed, matches the Deed Map): crisp radar + current + tall 12h on top; big full-width 7-day strip below */
 @media (min-width:1300px) and (orientation:landscape){
-.dlswx-grid{gap:18px;padding:16px 20px}
-.dlswx-radar{flex:1 1 54%}
-.dlswx-radar img{aspect-ratio:16/9;max-height:min(64vh,640px)}
-.dlswx-side{flex:1 1 46%;display:grid;grid-template-columns:minmax(190px,0.72fr) minmax(340px,1.5fr);grid-template-rows:auto 1fr;grid-template-areas:"now hour" "week week";gap:14px 20px}
-.dlswx-now{grid-area:now;align-self:start}
-.dlswx-hourwrap{grid-area:hour;align-self:start}
-.dlswx-weekwrap{grid-area:week;display:flex;flex-direction:column}
-.dlswx-current{flex-direction:column;align-items:flex-start;gap:8px}
-.dlswx-cur-temp{font-size:52px}
-.dlswx-cur-icon{width:62px;height:62px}
-.dlswx-cur-desc{font-size:15px}
-.dlswx-hourly{gap:6px;overflow-x:visible}
-.dlswx-hr{flex:1 1 0;width:auto}
-.dlswx-hr-bar{height:96px;width:100%;max-width:20px}
-.dlswx-hr-t{font-size:11px}
-.dlswx-hr-p{font-size:11px}
-.dlswx-hr-temp{font-size:11px}
-.dlswx-7day{flex-direction:row;gap:10px;flex:1 1 auto}
-.dlswx-d{flex:1 1 0;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:6px;border-top:none;background:#232221;border:1px solid #2d2c2b;border-radius:8px;padding:12px 6px}
-.dlswx-d-n{flex:none;font-size:13px}
-.dlswx-d-i{width:44px;height:44px}
-.dlswx-d-s{flex:none;white-space:normal;font-size:10.5px;line-height:1.25;max-height:26px;overflow:hidden}
-.dlswx-d-pop{flex:none}
-.dlswx-d-t{flex:none}
-.dlswx-d-lo{margin-left:6px}
+.dlswx-grid{grid-template-columns:auto minmax(200px,0.85fr) minmax(440px,1.6fr);grid-template-rows:auto auto;grid-template-areas:"rad now hour" "week week week";gap:18px 26px;padding:16px 22px;align-items:center}
+.dlswx-radar{align-self:start}
+.dlswx-radar img{width:560px;max-width:40vw;aspect-ratio:16/9}
+.dlswx-now{align-self:center}
+.dlswx-hourwrap{align-self:center}
+.dlswx-current{flex-direction:column;align-items:flex-start;gap:10px}
+.dlswx-cur-icon{width:76px;height:76px}
+.dlswx-cur-temp{font-size:64px}
+.dlswx-cur-desc{font-size:17px}
+.dlswx-cur-wind{font-size:14px;margin-top:3px}
+.dlswx-hourly{gap:8px;overflow-x:visible}
+.dlswx-hr{flex:1 1 0;width:auto;max-width:60px}
+.dlswx-hr-t{font-size:13px}
+.dlswx-hr-bar{height:200px;width:100%;max-width:30px;margin:3px auto}
+.dlswx-hr-p{font-size:13px}
+.dlswx-hr-temp{font-size:13px}
+.dlswx-weekwrap .dlswx-sub{font-size:12px}
+.dlswx-7day{flex-direction:row;gap:12px}
+.dlswx-d{flex:1 1 0;flex-direction:column;align-items:center;justify-content:flex-start;text-align:center;gap:7px;border-top:none;background:#232221;border:1px solid #2d2c2b;border-radius:10px;padding:16px 12px}
+.dlswx-d-n{flex:none;font-size:17px;color:#f3f2f1}
+.dlswx-d-i{width:66px;height:66px}
+.dlswx-d-s{flex:none;white-space:normal;font-size:13.5px;line-height:1.3;color:#c8c6c4}
+.dlswx-d-pop{flex:none;font-size:15px}
+.dlswx-d-t{flex:none;font-size:20px;margin-top:2px}
+.dlswx-d-hi{font-size:21px}
+.dlswx-d-lo{font-size:17px;margin-left:8px}
 }
-@media (max-width:620px){.dlswx-grid{flex-direction:column}}
 `;
