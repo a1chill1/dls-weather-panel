@@ -108,7 +108,7 @@ const SOURCES: any[] = [
   { id:'tn', label:'TN — Statewide (86 counties)', state:'TN',
     url:'https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0/query',
     bbox:[-90.45,34.94,-81.60,36.72], countyField:'COUNTY_NAME', where:'1=1',
-    f:{pin:['PARCELID'],owner:['OWNER'],owner2:['OWNER2'],address:['ADDRESS'],subdiv:['SUBDIV'],lot:['LOT'],acres:['DEEDAC'],assr:['LINK_TPV','LINK_TPAD'],tpad:['LINK_TPAD'],gislinkf:['GISLINK']},
+    f:{pin:['PARCELID'],owner:['OWNER'],owner2:['OWNER2'],address:['ADDRESS'],subdiv:['SUBDIV'],lot:['LOT'],acres:['DEEDAC'],assr:['LINK_TPV','LINK_TPAD'],tpad:['LINK_TPAD'],gislinkf:['GISLINK'],parcelno:['PARCEL']},
     search:{owner:'OWNER',address:'ADDRESS',parcel:'PARCELID'} },
   { id:'davidson', label:'TN — Davidson / Nashville', state:'TN', county:'DAVIDSON',
     url:'https://maps.nashville.gov/arcgis/rest/services/Cadastral/Parcels/MapServer/0/query',
@@ -158,6 +158,7 @@ const SOURCES: any[] = [
 ];
 
 const MINZOOM = 15;
+const LABELZOOM = 17;
 
 // ---- Self-tagged zoning layer (reference only), jurisdiction-aware ----
 // Each entry = one adopted map: bounds [[S,W],[N,E]] + its OWN districts/colors/names.
@@ -231,11 +232,11 @@ function centroid(r:any){ let x=0,y=0; const n=r.length; for(let i=0;i<n;i++){ x
 function pointInRing(p:any,r:any){ const x=p[0],y=p[1]; let inside=false; for(let i=0,j=r.length-1;i<r.length;j=i++){ const xi=r[i][0],yi=r[i][1],xj=r[j][0],yj=r[j][1]; const hit=((yi>y)!=(yj>y))&&(x<(xj-xi)*(y-yi)/(yj-yi)+xi); if(hit) inside=!inside; } return inside; }
 function ringsToGeoJSON(rings:any){ let outers:any[]=[], holes:any[]=[]; rings.forEach((r:any)=>{ (signedArea(r)>=0?outers:holes).push(r); }); if(outers.length===0){ outers=rings; holes=[]; } const polys=outers.map((o:any)=>[o]); holes.forEach((h:any)=>{ const c=centroid(h); let idx=0; for(let i=0;i<polys.length;i++){ if(pointInRing(c,polys[i][0])){ idx=i; break; } } polys[idx].push(h); }); return polys.length===1?{type:'Polygon',coordinates:polys[0]}:{type:'MultiPolygon',coordinates:polys}; }
 function esriToFeatures(data:any){ if(!data||!data.features) return []; return data.features.map((ft:any)=>{ let geom=null; if(ft.geometry&&ft.geometry.rings){ geom=ringsToGeoJSON(ft.geometry.rings); } return {type:'Feature',properties:ft.attributes||{},geometry:geom}; }).filter((f:any)=>f.geometry); }
-function normalize(attrs:any, src:any){ const n:any={src:src}; n.pin=pick(attrs,src.f.pin); n.owner=pick(attrs,src.f.owner); n.owner2=pick(attrs,src.f.owner2); n.address=pick(attrs,src.f.address); n.mail=pick(attrs,src.f.mail); n.subdiv=pick(attrs,src.f.subdiv); n.lot=pick(attrs,src.f.lot); n.acres=pick(attrs,src.f.acres); n.zoning=pick(attrs,src.f.zoning); n.assr=pick(attrs,src.f.assr); n.tpad=pick(attrs,src.f.tpad); const gm=(n.tpad.match(/gislink=([^&]+)/)||[])[1]; n.gislink=gm?decodeURIComponent(gm):pick(attrs,src.f.gislinkf); n.deedBook=pick(attrs,src.f.deedBook); n.deedPage=pick(attrs,src.f.deedPage); n.legalref=pick(attrs,src.f.legalref); n.deedref=pick(attrs,src.f.deedref); n.state=src.state; n.county=src.county||pick(attrs,[src.countyField]); if(n.county) n.county=n.county.toUpperCase().replace(/ COUNTY$/,'').trim(); return n; }
+function normalize(attrs:any, src:any){ const n:any={src:src}; n.pin=pick(attrs,src.f.pin); n.owner=pick(attrs,src.f.owner); n.owner2=pick(attrs,src.f.owner2); n.address=pick(attrs,src.f.address); n.mail=pick(attrs,src.f.mail); n.subdiv=pick(attrs,src.f.subdiv); n.lot=pick(attrs,src.f.lot); n.acres=pick(attrs,src.f.acres); n.zoning=pick(attrs,src.f.zoning); n.parcelno=pick(attrs,src.f.parcelno); n.assr=pick(attrs,src.f.assr); n.tpad=pick(attrs,src.f.tpad); const gm=(n.tpad.match(/gislink=([^&]+)/)||[])[1]; n.gislink=gm?decodeURIComponent(gm):pick(attrs,src.f.gislinkf); n.deedBook=pick(attrs,src.f.deedBook); n.deedPage=pick(attrs,src.f.deedPage); n.legalref=pick(attrs,src.f.legalref); n.deedref=pick(attrs,src.f.deedref); n.state=src.state; n.county=src.county||pick(attrs,[src.countyField]); if(n.county) n.county=n.county.toUpperCase().replace(/ COUNTY$/,'').trim(); return n; }
 function parseBookPage(n:any){ if(n.deedBook&&n.deedPage&&/\d/.test(n.deedBook)&&/\d/.test(n.deedPage)) return {book:n.deedBook.replace(/[^0-9A-Za-z]/g,''),page:n.deedPage.replace(/[^0-9A-Za-z]/g,'')}; const ref=n.legalref||''; const m=ref.match(/^\s*([0-9A-Za-z]+)\s*[-\/]\s*([0-9A-Za-z]+)\s*$/); if(m) return {book:m[1],page:m[2]}; return null; }
 function tsNameUrl(owner:string){ const name=(owner||'').split(',')[0].trim(); return TS_BASE+'nameSearch.php?'+qs({nameType:'2',searchType:'PA',indexType:'BOTH',p1:name,p2:'',expandAll:'on',startDate:'',endDate:'',itype:'0',executeSearch:'Execute Search'}); }
 function tsBookPageUrl(bp:any){ return TS_BASE+'bookPageSearch.php?'+qs({book:bp.book,page:bp.page,fileNumber:'',executeSearch:'Execute Search'}); }
-function outFieldsFor(s:any){ const set:any={}; ['pin','owner','owner2','address','mail','subdiv','lot','acres','zoning','assr','tpad','gislinkf','deedBook','deedPage','legalref','deedref'].forEach((k)=>{ (s.f[k]||[]).forEach((fn:string)=>{ set[fn]=1; }); }); if(s.countyField) set[s.countyField]=1; return Object.keys(set).join(',')||'*'; }
+function outFieldsFor(s:any){ const set:any={}; ['pin','owner','owner2','address','mail','subdiv','lot','acres','zoning','assr','tpad','gislinkf','deedBook','deedPage','legalref','deedref','parcelno'].forEach((k)=>{ (s.f[k]||[]).forEach((fn:string)=>{ set[fn]=1; }); }); if(s.countyField) set[s.countyField]=1; return Object.keys(set).join(',')||'*'; }
 function bboxIntersect(a:any,b:any){ return !(b[0]>a[2]||b[2]<a[0]||b[1]>a[3]||b[3]<a[1]); }
 
 // ============================ Coverage / Projects layer (WIP survey jobs) ============================
@@ -259,6 +260,7 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
   private zoneByPin:any = {}; private zoningView=true; private zoningEdit=false;
   private zTarget:any = null; private loadSeq=0; private tagJur:string='auto';
   private workedByPin:any={}; private workView=false; private workEdit=false; private wTarget:any=null; private _collW=false; private _workLoaded=false; private workedWipIds:any={}; private _workCount=0; private _workUnresolved=0; private _wipPick:any[]=[]; private _workColorMode:string='flat';
+  private selFeat:any=null; private selN:any=null; private selLayer:any=null; private labelLayer:any=null; private workedGeomLayer:any=null; private _workGeomLoaded=false; private _folderCache:any={}; private _printMap:any=null;
   private splitState:any=null; private splitLayer:any=null; private splitTmp:any[]=[]; private splitMarkers:any[]=[]; private _splitClick:any=null; private _splitDrawPopup:any=null;
   private femaLayer:any=null; private _femaOn=false; private areasLayer:any=null; private _areasRenderer:any=null; private areas:any[]=[]; private _areasOn=false;
   private areaState:any=null; private areaMarkers:any[]=[]; private areaLine:any=null; private _areaClick:any=null;
@@ -334,6 +336,28 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
         .wk-or{font-size:11px;color:#888;margin:6px 0 2px;text-align:center}
         .wk-cur{font-size:12px;margin:2px 0}
         .dls-wk{margin:2px 0}
+        .dls-plabel{color:#444;font:600 10px/1 system-ui,sans-serif;text-shadow:0 0 2px #fff,0 0 2px #fff,0 0 2px #fff;white-space:nowrap;transform:translate(-50%,-50%);}
+        .dls-plabel.print{color:#333;font-size:9px;}
+        .dls-print-modal{position:fixed;inset:0;background:rgba(20,24,33,.55);z-index:99998;display:flex;align-items:center;justify-content:center;}
+        .dls-print-modal .dlsheet{width:8.5in;height:11in;background:#fff;box-shadow:0 8px 40px rgba(0,0,0,.4);display:flex;flex-direction:column;padding:.3in;box-sizing:border-box;}
+        .dls-print-modal .dlhd{text-align:center;font:700 16px Georgia,serif;margin-bottom:6px;}
+        .dls-print-modal .dlmap{flex:1 1 auto;border:1px solid #999;}
+        .dls-print-modal .dlft{display:flex;justify-content:space-between;align-items:flex-end;margin-top:8px;font:11px/1.35 Arial,sans-serif;}
+        .dls-print-modal .dlinfo div{margin:1px 0;}
+        .dls-print-modal .dlscale{text-align:right;}
+        .dls-print-modal .sbar{display:inline-flex;align-items:center;gap:6px;}
+        .dls-print-modal .sbar .sb{height:6px;background:#333;border:1px solid #333;}
+        .dls-print-modal .srat{font-size:10px;color:#444;margin-top:2px;}
+        .dls-print-modal .dpx{position:absolute;top:14px;right:24px;display:flex;gap:8px;}
+        .dls-print-modal .dpx button{padding:8px 14px;border:0;border-radius:6px;font:600 13px sans-serif;cursor:pointer;background:#1565ff;color:#fff;}
+        .dls-print-modal .dpx button#dlsPrintClose{background:#555;}
+        @media print {
+          body * { visibility:hidden !important; }
+          .dls-print-modal, .dls-print-modal * { visibility:visible !important; }
+          .dls-print-modal{position:fixed;inset:0;background:#fff;display:block;}
+          .dls-print-modal .dlsheet{box-shadow:none;width:8.5in;height:11in;margin:0 auto;}
+          .dls-print-modal .dpx{display:none !important;}
+        }
         .dls-pm #zlegend{position:absolute;z-index:900;top:8px;right:8px;background:rgba(255,255,255,.98);border:1px solid #cbd5e1;border-radius:8px;font-size:11px;width:242px;max-height:calc(100% - 22px);overflow:auto;box-shadow:0 6px 20px rgba(0,0,0,.16);display:none;}
         .dls-pm #zlegend b{font-size:11.5px;} .dls-pm #zlegend .zi{display:flex;align-items:center;gap:6px;margin:3px 0;}
         .dls-pm #zlegend .zsw{width:13px;height:13px;border-radius:3px;border:1px solid rgba(0,0,0,.3);flex:none;}
@@ -407,7 +431,7 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
           <button id="clear" class="ghost">Clear</button>
           <span class="sp"></span>
           <select id="base"><option value="aerial">Aerial</option><option value="streets" selected>Streets</option><option value="topo">Topo</option></select>
-          <select id="zmode" title="Zoning layer (View / Edit)"><option value="off">Zoning: Off</option><option value="view" selected>Zoning: View</option><option value="edit">Zoning: Edit (tag lots)</option></select>
+          <select id="zmode" title="Zoning layer (View / Edit)"><option value="off" selected>Zoning: Off</option><option value="view">Zoning: View</option><option value="edit">Zoning: Edit (tag lots)</option></select>
           <select id="proj" title="Survey projects layer (WIP)"><option value="off">Projects: Off</option><option value="on" selected>Projects: On</option></select>
           <select id="wmode" title="Work history layer (surveyed parcels)"><option value="off" selected>Work history: Off</option><option value="view">Work history: View</option><option value="edit">Work history: Edit (mark surveyed)</option></select>
           <button id="fs" class="ghost" title="Full screen (Esc to exit)">Full screen</button>
@@ -428,7 +452,7 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
     $('#mode').onchange = (e:any)=>{ const p:any={owner:'Search owner name…',address:'Search street address…',parcel:'Search parcel ID…'}; $('#q').placeholder=p[e.target.value]; };
     $('#go').onclick = ()=>this.runSearch();
     $('#q').addEventListener('keydown',(e:any)=>{ if(e.key==='Enter') this.runSearch(); });
-    $('#clear').onclick = ()=>{ this.hiLayer.clearLayers(); $('#results').style.display='none'; };
+    $('#clear').onclick = ()=>{ this.hiLayer.clearLayers(); $('#results').style.display='none'; this.clearSelection(); };
     $('#rclose').onclick = ()=>{ $('#results').style.display='none'; };
     $('#base').onchange = (e:any)=>this.setBase(e.target.value);
     $('#zmode').onchange = (e:any)=>this.setZoningMode(e.target.value);
@@ -436,7 +460,7 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
     $('#wmode').onchange = (e:any)=>this.setWorkMode(e.target.value);
     $('#fs').onclick = ()=>this.toggleFs();
     this.buildMap();
-    this.setZoningMode('view');   // default to Zoning: View
+    this.setZoningMode('off');   // default Zoning OFF (Projects on, Work history off)
     this.setProjectsMode(true);   // Projects layer ON by default (one Master Map)
   }
 
@@ -462,9 +486,16 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
     const FemaTiles:any = L.TileLayer.extend({ getTileUrl:function(coords:any){ const map=this._map; const ts=this.getTileSize(); const nw=map.unproject(L.point(coords.x*ts.x,coords.y*ts.y),coords.z); const se=map.unproject(L.point((coords.x+1)*ts.x,(coords.y+1)*ts.y),coords.z); const a=L.CRS.EPSG3857.project(nw), b=L.CRS.EPSG3857.project(se); const bbox=Math.min(a.x,b.x)+','+Math.min(a.y,b.y)+','+Math.max(a.x,b.x)+','+Math.max(a.y,b.y); return 'https://hazards.fema.gov/arcgis/rest/services/public/NFHL/MapServer/export?bbox='+bbox+'&bboxSR=3857&imageSR=3857&size='+ts.x+','+ts.y+'&dpi=96&format=png32&transparent=true&f=image'; } });
     this.femaLayer = new FemaTiles('', {tileSize:256, opacity:0.55, pane:'zoning', maxZoom:20, attribution:'Flood data © FEMA NFHL'});
     ZJURS.forEach((j:any)=>{ j._layer = L.imageOverlay(this.zoningAssetBase+j.file, j.bounds, {opacity:j.opacity, interactive:false, pane:'zoning'}); j._on = false; });
+    this.map.createPane('worked'); this.map.getPane('worked').style.zIndex='470';
+    this.map.createPane('sel'); this.map.getPane('sel').style.zIndex='480'; this.map.getPane('sel').style.pointerEvents='none';
+    this.map.createPane('labels'); this.map.getPane('labels').style.zIndex='550'; this.map.getPane('labels').style.pointerEvents='none';
     this.parcelLayer = L.geoJSON(null,{ style:(ft:any)=>this.parcelStyle(ft), onEachFeature:(ft:any,layer:any)=>this.onFeat(ft,layer) }).addTo(this.map);
+    this.selLayer = L.geoJSON(null,{ pane:'sel', style:{color:'#1565ff',weight:3,fillColor:'#4a90e2',fillOpacity:0.22} }).addTo(this.map);
+    this.labelLayer = L.layerGroup().addTo(this.map);
+    this.workedGeomLayer = L.geoJSON(null,{ pane:'worked', style:(ft:any)=>this.workedStyle(ft), onEachFeature:(ft:any,layer:any)=>this.onWorkedFeat(ft,layer) });
     this.hiLayer = L.geoJSON(null,{ style:{color:'#ff2d55',weight:3,fill:false} }).addTo(this.map);
     this.map.on('moveend',()=>{ clearTimeout(this.loadTimer); this.loadTimer=setTimeout(()=>this.maybeLoad(),250); });
+    this.map.on('zoomend',()=>{ this.renderLabels(); });
     this.setStatus('Pan/zoom to your area — parcels load at zoom '+MINZOOM+'+');
     setTimeout(()=>{ try{ this.map.invalidateSize(); }catch(e){} this.loadParcels(); },400);
     window.addEventListener('resize',()=>{ clearTimeout(this.rzTimer); this.rzTimer=setTimeout(()=>{ try{ if(this.map) this.map.invalidateSize(); }catch(e){} },200); });
@@ -516,7 +547,7 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
     this.setStatus('Loading parcels…');   // keep the OLD parcels on screen until the new set is ready (no flash)
     let got=0, done=0; const errs:string[]=[]; const acc:any[]=[];
     const short=(s:any)=>s.label.replace(/^..? — /,'');
-    const finish=()=>{ if(mySeq!==this.loadSeq) return; if(done===srcs.length){ this.parcelLayer.clearLayers(); if(acc.length) this.parcelLayer.addData(acc); this.setStatus(got+' parcels'+(errs.length?'  · unavailable: '+errs.join('; '):'')); } };
+    const finish=()=>{ if(mySeq!==this.loadSeq) return; if(done===srcs.length){ this.parcelLayer.clearLayers(); if(acc.length) this.parcelLayer.addData(acc); this.setStatus(got+' parcels'+(errs.length?'  · unavailable: '+errs.join('; '):'')); this.renderLabels(); } };
     const httpsPage = (typeof location!=='undefined' && location.protocol==='https:');
     srcs.forEach((s)=>{
       if(httpsPage && /^http:\/\//i.test(s.url)){ errs.push(short(s)+' (HTTP-only — needs HTTPS proxy)'); done++; finish(); return; }
@@ -539,7 +570,8 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
       const ll=(ev&&ev.latlng)||(layer.getBounds&&layer.getBounds().getCenter());
       if(this.workEdit){ this.openWorkPicker(n, ll, feat); return; }
       if(this.zoningEdit){ this.openZonePicker(n, ll, feat); return; }
-      L.popup({maxWidth:300,autoPanPadding:[24,24]}).setLatLng(ll).setContent(this.popupHtml(n)).openOn(this.map);
+      this.selectParcel(feat, n);
+      L.popup({maxWidth:320,autoPanPadding:[24,24]}).setLatLng(ll).setContent(this.popupHtml(n)).openOn(this.map);
     });
   }
 
@@ -555,11 +587,11 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
     if(n.subdiv) row('Subdiv', n.subdiv+(n.lot?'  Lot '+n.lot:''));
     if(n.zoning) row('Zoning', n.zoning);
     const zt=this.zoneByPin[pinKey(n.pin)]; if(zt){ const zj=jurById(zt.jur)||ZJURS[0]; if(zt.split&&zt.pieces){ row('Zone ('+(zt.jur||'')+')', zt.pieces.map((p:any)=>p.z||'blank').join(' / ')+' (split lot)'); } else { row('Zone ('+(zt.jur||'')+')', zt.zone+' — '+((zj.names&&zj.names[zt.zone])||'')+(zt.flood?' · Floodplain':'')); } }
-    if(this.workView){ const wj=this.workedByPin[pinKey(n.pin)]; if(wj&&wj.length){ let wb=''; for(let wi=0;wi<wj.length;wi++){ const w=wj[wi]; wb+='<div class="dls-wk"><b>'+esc(w.job||'')+'</b>'+(w.name?' '+esc(w.name):'')+(w.folder?' <a class="dls-pop-a" href="'+esc(w.folder)+'" target="_blank" rel="noopener">folder &#8599;</a>':'')+'</div>'; } rows+='<tr><td class="k">Surveyed</td><td>'+wb+'</td></tr>'; } }
+    if(this.workView){ const wj=this.workedByPin[pinKey(n.pin)]; if(wj&&wj.length){ let wb=''; for(let wi=0;wi<wj.length;wi++){ const w=wj[wi]; wb+='<div class="dls-wk"><b>'+esc(w.job||'')+'</b>'+(w.name?' '+esc(w.name):'')+(w.job?' <a class="dls-pop-a" href="#" data-act="wfolder" data-arg="'+esc(w.job)+'">Open folder &#8599;</a>':'')+'</div>'; } rows+='<tr><td class="k">Surveyed</td><td>'+wb+'</td></tr>'; } }
     if(n.deedBook||n.deedPage) row('Deed','Bk '+n.deedBook+' Pg '+n.deedPage);
     else if(n.legalref) row('Deed ref', n.legalref);
     else if(n.deedref) row('Deed ref', n.deedref);
-    return '<div class="lp"><h3>'+esc(n.county||'')+(n.state?', '+n.state:'')+'</h3><div class="co">'+esc(n.src.label)+'</div><table>'+rows+'</table>'+this.deedSection(n,id)+'</div>';
+    return '<div class="lp"><h3>'+esc(n.county||'')+(n.state?', '+n.state:'')+'</h3><div class="co">'+esc(n.src.label)+'</div><table>'+rows+'</table>'+'<div style="margin:6px 0"><button class="zbtn2" data-act="print" data-id="'+id+'">&#128424; Print lot sheet</button></div>'+this.deedSection(n,id)+'</div>';
   }
 
   private deedSection(n:any, id:string): string {
@@ -598,6 +630,7 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
     this.workView=(v==='view'||v==='edit');
     this.workEdit=(v==='edit');
     if(this.workEdit && this.zoningEdit){ this.zoningEdit=false; const _zs=this.domElement.querySelector('#zmode') as any; if(_zs) _zs.value='view'; this.zoningView=true; }
+    if(this.workView){ if(this.workedGeomLayer && !this.map.hasLayer(this.workedGeomLayer)) this.workedGeomLayer.addTo(this.map); this.ensureWorkedGeom(); } else { if(this.workedGeomLayer && this.map.hasLayer(this.workedGeomLayer)) this.map.removeLayer(this.workedGeomLayer); }
     this.buildLegend();
     this.restyleParcels();
     if(v==='edit') this.setStatus('Work history EDIT — click a lot, then pick its WIP job (or type an older one) to mark it surveyed.');
@@ -623,7 +656,8 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
       const items=(d&&d.value)||[]; const m:any={}; const ids:any={}; let unres=0;
       for(let i=0;i<items.length;i++){ const it=items[i]; if(it.WIPItemId!=null) ids[it.WIPItemId]=1; if(it.ParcelID){ const k=pinKey(it.ParcelID); if(!m[k]) m[k]=[]; m[k].push({id:it.Id,job:it.JobNumber,name:it.JobName,folder:it.FolderURL,county:it.County,src:it.Source,wipId:it.WIPItemId,notes:it.Notes}); } else { unres++; } }
       this.workedByPin=m; this.workedWipIds=ids; this._workCount=this.countWorkedLots(m); this._workUnresolved=unres; this._workLoaded=true;
-      this.restyleParcels(); if(this.workView) this.buildLegend();
+      const fc:any={}; for(let fi=0;fi<items.length;fi++){ const it2=items[fi]; if(it2.JobNumber&&it2.FolderURL) fc[it2.JobNumber]=it2.FolderURL; } this._folderCache=fc;
+      this._workGeomLoaded=false; if(this.workView){ this.ensureWorkedGeom(); this.buildLegend(); }
       this.selfHealWorked();
     }).catch(()=>{});
   }
@@ -709,7 +743,134 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
     this.spPost(this.workedApi()+'/items('+id+')', null, {'X-HTTP-Method':'DELETE','IF-MATCH':'*'}).then((r:any)=>{ if(r.status>=200&&r.status<300){ if(t&&this.workedByPin[t.pin]){ const arr=this.workedByPin[t.pin]; const na:any[]=[]; for(let i=0;i<arr.length;i++){ if(arr[i].id!==id) na.push(arr[i]); } if(na.length) this.workedByPin[t.pin]=na; else delete this.workedByPin[t.pin]; } this._workCount=this.countWorkedLots(this.workedByPin); this.restyleParcels(); if(this.workView) this.buildLegend(); if(t) this.renderWorkPicker(); this.setStatus('Removed.'); } else this.setStatus('Remove failed ('+r.status+')'); }).catch((e:any)=>this.setStatus('Remove failed: '+e));
   }
 
-private onAct(act:string, id:string, arg:string): void {
+  // ================= v20: selection highlight =================
+  private selectParcel(feat:any, n:any): void {
+    try{ this.selFeat=feat; this.selN=n; if(this.selLayer){ this.selLayer.clearLayers(); if(feat&&feat.geometry) this.selLayer.addData(feat); } }catch(e){}
+  }
+  private clearSelection(): void { this.selFeat=null; this.selN=null; if(this.selLayer) this.selLayer.clearLayers(); }
+
+  // ================= v20: parcel-number labels =================
+  private parcelLabelText(ft:any): string {
+    const src=SOURCES.filter((s)=>s.id===ft.properties.__src)[0]||SOURCES[0];
+    const pno=pick(ft.properties, src.f.parcelno);
+    if(pno){ const m=pno.match(/^0*([0-9]+)\.([0-9]+)$/); if(m) return m[1]+'.'+m[2]; return pno.replace(/^0+(?=[0-9])/,''); }
+    const pid=pick(ft.properties, src.f.pin);
+    if(pid && /^[0-9]{3} /.test(pid) && pid.length>=16){ const ip=parseInt(pid.substring(11,14),10); const dp=pid.substring(14,16); if(!isNaN(ip)) return ip+'.'+dp; }
+    return '';
+  }
+  private renderLabels(): void {
+    if(!this.labelLayer) return; this.labelLayer.clearLayers();
+    if(this.map.getZoom()<LABELZOOM) return;
+    const self=this;
+    try{ this.parcelLayer.eachLayer(function(ly:any){ const ft=ly.feature; if(!ft) return; const txt=self.parcelLabelText(ft); if(!txt) return; const r=outerRing(ft.geometry); if(!r||!r.length) return; const c=centroid(r); const mk=L.marker([c[1],c[0]],{pane:'labels',interactive:false,icon:L.divIcon({className:'dls-plabel',html:txt,iconSize:[0,0]})}); self.labelLayer.addLayer(mk); }); }catch(e){}
+  }
+
+  // ================= v20: worked-lots overview (by-ID, any zoom) =================
+  private workedStyle(ft:any): any { const w=this.workedByPin[pinKey(ft.properties.PARCELID)]; const c=this.workColor(w||[]); return {color:c.outline,weight:2.5,fillColor:c.fill,fillOpacity:0.45,pane:'worked'}; }
+  private onWorkedFeat(feat:any, layer:any): void {
+    layer.on('click',(ev:any)=>{
+      if(this.splitState||this.areaState) return;
+      const n=normalize(feat.properties, SOURCES[0]);
+      const ll=(ev&&ev.latlng)||(layer.getBounds&&layer.getBounds().getCenter());
+      if(this.workEdit){ this.openWorkPicker(n, ll, feat); return; }
+      if(this.zoningEdit){ this.openZonePicker(n, ll, feat); return; }
+      this.selectParcel(feat, n);
+      L.popup({maxWidth:320,autoPanPadding:[24,24]}).setLatLng(ll).setContent(this.popupHtml(n)).openOn(this.map);
+    });
+  }
+  private ensureWorkedGeom(): void {
+    if(this._workGeomLoaded || !this.workedGeomLayer) return;
+    this._workGeomLoaded=true; const self=this;
+    this.spGet(this.workedApi()+"/items?$select=ParcelID&$top=5000").then((d:any)=>{
+      const seen:any={}; const list:string[]=[]; const items=(d&&d.value)||[];
+      for(let i=0;i<items.length;i++){ const p=items[i].ParcelID; if(p&&!seen[pinKey(p)]){ seen[pinKey(p)]=1; list.push(p); } }
+      self.setStatus('Loading '+list.length+' surveyed lots…'); self.fetchWorkedChunks(list,0,[]);
+    }).catch(()=>{ self._workGeomLoaded=false; });
+  }
+  private fetchWorkedChunks(list:string[], i:number, acc:any[]): void {
+    const self=this;
+    if(i>=list.length){ try{ self.workedGeomLayer.clearLayers(); if(acc.length) self.workedGeomLayer.addData(acc); }catch(e){} self.setStatus(acc.length+' surveyed lots shown.'); return; }
+    const chunk=list.slice(i,i+80); const inlist=chunk.map((x)=>"'"+x.replace(/'/g,"''")+"'").join(',');
+    const url=WK_TN_SVC+'?where='+encodeURIComponent('PARCELID IN ('+inlist+')')+'&outFields='+encodeURIComponent(outFieldsFor(SOURCES[0]))+'&returnGeometry=true&outSR=4326&resultRecordCount=2000&f=json';
+    this.arcgisFetch(url).then((d:any)=>{ const feats=esriToFeatures(d); for(let k=0;k<feats.length;k++){ feats[k].properties.__src='tn'; acc.push(feats[k]); } self.fetchWorkedChunks(list,i+80,acc); }).catch(()=>{ self.fetchWorkedChunks(list,i+80,acc); });
+  }
+
+  // ================= v20: folder resolve by Job# (hybrid, no PA) =================
+  private openFolderByJob(jobNo:string): void {
+    if(!jobNo){ this.setStatus('No job number on this record.'); return; }
+    const w=window.open('','_blank'); try{ if(w) w.document.write('<p style="font:14px/1.4 sans-serif;padding:18px;color:#333">Opening job folder…</p>'); }catch(e){}
+    const open=(url:string)=>{ try{ if(w) w.location=url; else window.open(url,'_blank'); }catch(e){} };
+    const cached=this._folderCache[jobNo]; const self=this;
+    if(cached){ const m=String(cached).match(/https?:\/\/[^/]+(\/.*)$/); const sr=m?decodeURIComponent(m[1]):''; if(sr){ const ex=this.context.pageContext.web.absoluteUrl+"/_api/web/GetFolderByServerRelativeUrl('"+sr.replace(/'/g,"''")+"')/Exists"; this.spGet(ex).then((d:any)=>{ if(d&&(d.value===true||d.Exists===true)){ open(cached); self.setStatus('Opened job folder.'); } else self.resolveFolder(jobNo,open); }).catch(()=>self.resolveFolder(jobNo,open)); return; } }
+    this.resolveFolder(jobNo, open);
+  }
+  private resolveFolder(jobNo:string, open:any): void {
+    const base=this.context.pageContext.web.absoluteUrl; const host=base.replace(/\/sites\/.*$/,'');
+    const spm=base.match(/(\/sites\/[^/]+)/); const sp=spm?spm[1]:''; const self=this;
+    const yr='20'+jobNo.substring(0,2); const mm=jobNo.substring(2,4);
+    const parents=[yr, yr+'/'+mm, 'Archive', 'Archive/'+yr, 'Archive/'+yr+'/'+mm];
+    const tryNext=(idx:number)=>{
+      if(idx>=parents.length){ open(base+"/Shared Documents/Forms/AllItems.aspx"); self.setStatus('Folder for '+jobNo+' not found — opened the library.'); return; }
+      const parentRel=(sp+'/Shared Documents/'+parents[idx]).replace(/ /g,'%20');
+      const u=base+"/_api/web/GetFolderByServerRelativeUrl('"+parentRel.replace(/'/g,"''")+"')/Folders?$select=Name,ServerRelativeUrl&$filter=startswith(Name,'"+jobNo+"')&$top=1";
+      self.spGet(u).then((d:any)=>{ const v=(d&&d.value)||[]; if(v.length){ const fu=host+v[0].ServerRelativeUrl; self._folderCache[jobNo]=fu; open(fu); self.setStatus('Opened folder for '+jobNo); } else tryNext(idx+1); }).catch(()=>tryNext(idx+1));
+    };
+    tryNext(0);
+  }
+
+  // ================= v20: print lot sheet (8.5x11, centered + neighbors) =================
+  private openPrintSheet(n:any, feat:any): void {
+    if(!feat||!feat.geometry){ this.setStatus('Click a lot first, then Print.'); return; }
+    const old=this.domElement.querySelector('#dls-print') as any; if(old){ try{ old.parentNode.removeChild(old); }catch(e){} }
+    const host=document.createElement('div'); host.id='dls-print'; host.className='dls-print-modal';
+    const short=this.parcelLabelText(feat)||n.pin||'';
+    const dt=new Date(); const dstr=(dt.getMonth()+1)+'/'+dt.getDate()+'/'+dt.getFullYear();
+    host.innerHTML=''
+      +'<div class="dpx"><button id="dlsPrintGo">&#128424; Print</button><button id="dlsPrintClose">Close</button></div>'
+      +'<div class="dlsheet">'
+      +'<div class="dlhd">'+esc(n.county||'')+' County &mdash; Parcel: '+esc(short)+'</div>'
+      +'<div id="dlsPrintMap" class="dlmap"></div>'
+      +'<div class="dlft"><div class="dlinfo">'
+      +'<div><b>Date:</b> '+esc(dstr)+'</div>'
+      +'<div><b>County:</b> '+esc(n.county||'')+'</div>'
+      +'<div><b>Owner:</b> '+esc((n.owner||'')+(n.owner2?'; '+n.owner2:''))+'</div>'
+      +'<div><b>Address:</b> '+esc(n.address||'')+'</div>'
+      +'<div><b>Parcel ID:</b> '+esc(n.pin||'')+'</div>'
+      +'<div><b>Deeded Acreage:</b> '+esc(n.acres||'0')+'</div>'
+      +'</div><div class="dlscale" id="dlsPrintScale"></div></div>'
+      +'</div>';
+    this.domElement.appendChild(host); const self=this;
+    (host.querySelector('#dlsPrintClose') as any).onclick=()=>{ try{ if(self._printMap){ self._printMap.remove(); self._printMap=null; } host.parentNode.removeChild(host); }catch(e){} };
+    (host.querySelector('#dlsPrintGo') as any).onclick=()=>{ try{ window.print(); }catch(e){} };
+    const pm=L.map(host.querySelector('#dlsPrintMap'),{zoomControl:false,attributionControl:false,minZoom:6,maxZoom:20}); this._printMap=pm;
+    L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}',{maxZoom:20}).addTo(pm);
+    const r=outerRing(feat.geometry); const c=r?centroid(r):null;
+    const gj=L.geoJSON(feat,{interactive:false,style:{color:'#1565ff',weight:3,fillColor:'#4a90e2',fillOpacity:0.25}}).addTo(pm);
+    try{ pm.fitBounds(gj.getBounds().pad(2.2)); }catch(e){ if(c) pm.setView([c[1],c[0]],17); }
+    if(c) pm.setView([c[1],c[0]], pm.getZoom());
+    this.loadPrintParcels(pm, feat);
+    pm.on('moveend zoomend',()=>self.updatePrintScale(pm,host));
+    setTimeout(()=>{ try{ pm.invalidateSize(); if(c) pm.setView([c[1],c[0]], pm.getZoom()); self.updatePrintScale(pm,host); }catch(e){} },350);
+  }
+  private loadPrintParcels(pm:any, subj:any): void {
+    const b=pm.getBounds().pad(0.15); const env=[b.getWest(),b.getSouth(),b.getEast(),b.getNorth()].join(','); const src=SOURCES[0]; const self=this;
+    const url=src.url+'?'+qs({where:'1=1',geometry:env,geometryType:'esriGeometryEnvelope',inSR:4326,spatialRel:'esriSpatialRelIntersects',outFields:outFieldsFor(src),returnGeometry:true,outSR:4326,resultRecordCount:2000,f:'json'});
+    this.arcgisFetch(url).then((d:any)=>{ const feats=esriToFeatures(d);
+      L.geoJSON({type:'FeatureCollection',features:feats} as any,{interactive:false,style:{color:'#d08b27',weight:1,fill:false}}).addTo(pm);
+      for(let i=0;i<feats.length;i++){ feats[i].properties.__src='tn'; const txt=self.parcelLabelText(feats[i]); if(!txt) continue; const rr=outerRing(feats[i].geometry); if(!rr||!rr.length) continue; const cc=centroid(rr); L.marker([cc[1],cc[0]],{interactive:false,icon:L.divIcon({className:'dls-plabel print',html:txt,iconSize:[0,0]})}).addTo(pm); }
+      L.geoJSON(subj,{interactive:false,style:{color:'#1565ff',weight:3,fillColor:'#4a90e2',fillOpacity:0.28}}).addTo(pm);
+    }).catch(()=>{});
+  }
+  private updatePrintScale(pm:any, host:any): void {
+    try{ const z=pm.getZoom(); const lat=pm.getCenter().lat; const mpp=156543.03392*Math.cos(lat*Math.PI/180)/Math.pow(2,z);
+      const ratio=Math.round(mpp/0.0002645833); const m2ft=3.28084; const targetFt=mpp*150*m2ft;
+      const nice=[50,100,200,300,500,1000,2000,5000]; let ft=nice[0]; for(let i=0;i<nice.length;i++){ if(nice[i]<=targetFt) ft=nice[i]; }
+      const px=Math.round((ft/m2ft)/mpp); const el=host.querySelector('#dlsPrintScale');
+      if(el) el.innerHTML='<div class="sbar"><div class="sb" style="width:'+px+'px"></div><span>'+ft+' ft</span></div><div class="srat">Scale &asymp; 1:'+ratio+'</div>';
+    }catch(e){}
+  }
+
+  private onAct(act:string, id:string, arg:string): void {
     if(act==='deedGo') this.deedGo(id);
     else if(act==='deedName') this.deedName(id);
     else if(act==='deedGoUS') this.deedGoUS(id);
@@ -727,6 +888,8 @@ private onAct(act:string, id:string, arg:string): void {
     else if(act==='zareasave') this.saveArea(arg);
     else if(act==='wsave') this.saveWorked();
     else if(act==='wdel') this.clearWorked(arg);
+    else if(act==='print') this.openPrintSheet(this.selN||this.POP[id], this.selFeat);
+    else if(act==='wfolder') this.openFolderByJob(arg);
   }
 
   private openDeferred(): any { const w=window.open('','_blank'); try{ if(w) w.document.write('<p style="font:14px/1.4 sans-serif;padding:18px;color:#333">Looking up the latest deed…</p>'); }catch(e){} return w; }
@@ -785,7 +948,8 @@ private onAct(act:string, id:string, arg:string): void {
   private gotoFeature(f:any, n:any): void {
     this.hiLayer.clearLayers(); this.hiLayer.addData(f);
     try{ this.map.fitBounds(this.hiLayer.getBounds(),{maxZoom:18,padding:[40,40]}); }catch(e){}
-    L.popup({maxWidth:300}).setLatLng(this.hiLayer.getBounds().getCenter()).setContent(this.popupHtml(n)).openOn(this.map);
+    this.selectParcel(f, n);
+    L.popup({maxWidth:320}).setLatLng(this.hiLayer.getBounds().getCenter()).setContent(this.popupHtml(n)).openOn(this.map);
   }
 
   // ======================= RBS zoning layer =======================
@@ -809,7 +973,6 @@ private onAct(act:string, id:string, arg:string): void {
 
   private featPin(ft:any): string { const src=SOURCES.filter((s)=>s.id===ft.properties.__src)[0]||SOURCES[0]; return pinKey(pick(ft.properties, src.f.pin)); }
   private parcelStyle(ft:any): any {
-    if(this.workView){ const w=this.workedByPin[this.featPin(ft)]; if(w&&w.length){ const c=this.workColor(w); return {color:c.outline,weight:3,fillColor:c.fill,fillOpacity:0.5}; } }
     if(this.zoningView){ const z=this.zoneByPin[this.featPin(ft)]; if(z && this.jurShow[z.jur]!==false){ if(z.split) return {color:'#6b5300',weight:1,fillColor:'#000',fillOpacity:0.001}; const j=jurById(z.jur)||ZJURS[0]; const c=(j.colors&&j.colors[z.zone])||'#888'; return {color:'#6b5300',weight:1,fillColor:c,fillOpacity:0.55}; } }
     return {color:'#ffd24d',weight:1,fillColor:'#000',fillOpacity:0.001};
   }
