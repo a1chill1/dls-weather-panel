@@ -845,14 +845,14 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
     (host.querySelector('#dlsPrintClose') as any).onclick=()=>{ try{ if(self._printMap){ self._printMap.remove(); self._printMap=null; } if(host.parentNode) host.parentNode.removeChild(host); }catch(e){} };
     (host.querySelector('#dlsPrintGo') as any).onclick=()=>{ try{ window.print(); }catch(e){} };
     const pm=L.map(host.querySelector('#dlsPrintMap'),{zoomControl:false,attributionControl:false,minZoom:6,maxZoom:20}); this._printMap=pm;
-    L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}',{maxZoom:20}).addTo(pm);
+    L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}',{maxNativeZoom:19,maxZoom:20}).addTo(pm);
     const r=outerRing(feat.geometry); const c=r?centroid(r):null;
     const gj=L.geoJSON(feat,{interactive:false,style:{color:'#1565ff',weight:3,fillColor:'#4a90e2',fillOpacity:0.25}}).addTo(pm);
-    try{ pm.fitBounds(gj.getBounds().pad(0.7),{maxZoom:19}); }catch(e){ if(c) pm.setView([c[1],c[0]],18); }
-    if(c) pm.setView([c[1],c[0]], pm.getZoom());
-    this.loadPrintParcels(pm, feat);
+    if(c) pm.setView([c[1],c[0]],17);
+    let _loaded=false;
+    const frame=()=>{ try{ pm.invalidateSize(); pm.fitBounds(gj.getBounds(),{padding:[80,80],maxZoom:20}); if(!_loaded){ _loaded=true; self.loadPrintParcels(pm,feat); } self.updatePrintScale(pm,host); }catch(e){} };
     pm.on('moveend zoomend',()=>self.updatePrintScale(pm,host));
-    setTimeout(()=>{ try{ pm.invalidateSize(); if(c) pm.setView([c[1],c[0]], pm.getZoom()); self.updatePrintScale(pm,host); }catch(e){} },350);
+    setTimeout(frame,300); setTimeout(frame,1000);
   }
   private loadPrintParcels(pm:any, subj:any): void {
     const b=pm.getBounds().pad(0.15); const env=[b.getWest(),b.getSouth(),b.getEast(),b.getNorth()].join(','); const src=SOURCES[0]; const self=this;
