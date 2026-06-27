@@ -6,20 +6,19 @@
 // National Weather Service data: animated radar loop (RIDGE GIF), active weather
 // alerts, next-12h precip-chance timeline, and a 7-day forecast.
 //
-// v1.0.0.5 - READABILITY REBALANCE. The NWS loop GIF is only 600px native, so the
-//   v1.0.0.4 hero (~1355px wide) UPSCALED it ~2.3x -> pixelated. Fix:
-//     * Radar capped near its native width (<=560px) so it stays CRISP (no upscale),
-//       framed as a 16:9 landscape (keeps central TN + southern KY).
-//     * The freed space goes to a BIG, full-width 7-day strip (large cards, larger
-//       type + icons) so the forecast is easy to read.
-//   WIDE layout = top row [ crisp radar | current conditions | tall 12h timeline ]
-//   then a full-width 7-day card strip beneath. Still full-bleed 98vw to match the
-//   Deed Map. Medium = radar left + info right (7-day list). Mobile = stacked.
-//   Same NWS fetch logic / pinned IDs (upgrade in place).
+// v1.0.0.7 - SEARCHABLE LOCATION. A search box in the header (top-right) geocodes
+//   any US address OR "City, ST" (keyless OpenStreetMap/Nominatim) and switches the
+//   whole panel - radar station, current conditions, 12h timeline, 7-day, alerts and
+//   the location label - to that point. The nearest NWS radar station is resolved
+//   per-location from api.weather.gov /points (radarStation), so the radar follows
+//   the search. A home button resets to the office, and EVERY page reload defaults
+//   back to 107 Scottsville Rd, Lafayette, TN 37083 (36.52146, -86.026315).
+//   Built on v1.0.0.6 layout (full-bleed 98vw, crisp ~660px radar, full-width 7-day).
 //
-// Durability: api.weather.gov + radar.weather.gov (US Gov, free, no key). Bundled,
-// no external script/CDN, no iframe. Every call wrapped -> fails safe, never breaks
-// the page. Config (property pane): title, location label, latitude, longitude, radar.
+// Durability: api.weather.gov + radar.weather.gov (US Gov, free, no key) +
+// nominatim.openstreetmap.org (free, keyless, low-volume use; CORS-ok from the tenant).
+// Bundled, no external script/CDN, no iframe. Every call wrapped -> fails safe, never
+// breaks the page. Config (property pane): title, home label, home lat/long, fallback radar.
 // ============================================================================
 
 import { Version } from '@microsoft/sp-core-library';
@@ -42,37 +41,66 @@ const REFRESH_MS = 20 * 60 * 1000; // 20 minutes
 export default class WeatherPanelWebPart extends BaseClientSideWebPart<IWeatherPanelWebPartProps> {
   private _timer: any = undefined;
   private _cssInjected = false;
+  // current view (resets to home on every render / page load)
+  private _lat = '';
+  private _lon = '';
+  private _label = '';
 
   protected onInit(): Promise<void> { return Promise.resolve(); }
+
+  // ---- home / defaults -----------------------------------------------------
+  private _homeLat(): string { return (this.properties.latitude || '36.52146').trim(); }
+  private _homeLon(): string { return (this.properties.longitude || '-86.026315').trim(); }
+  private _homeLabel(): string { return (this.properties.locationLabel || 'Lafayette, TN').trim(); }
+  private _fallbackSite(): string { return (this.properties.radarSite || 'KOHX').trim().toUpperCase(); }
 
   public render(): void {
     this._injectCss();
     const title = (this.properties.title || 'Area Weather').trim();
-    const loc = (this.properties.locationLabel || 'Lafayette, TN').trim();
+    // reset to home on every (re)render -> page reload always shows the office
+    this._lat = this._homeLat();
+    this._lon = this._homeLon();
+    this._label = this._homeLabel();
 
     this.domElement.innerHTML = `
       <div class="dlswx">
         <div class="dlswx-head">
-          <div><span class="dlswx-title">${esc(title)}</span><span class="dlswx-loc">${esc(loc)}</span></div>
-          <div class="dlswx-updated" id="dlswx-updated">loading&hellip;</div>
+          <div class="dlswx-head-title">
+            <span class="dlswx-title">${esc(title)}</span>
+            <span class="dlswx-loc" id="dlswx-loc">${esc(this._label)}</span>
+          </div>
+          <form class="dlswx-search" id="dlswx-form" autocomplete="off">
+            <input id="dlswx-q" class="dlswx-q" type="text" placeholder="Search address or city, state" aria-label="Search a location" />
+            <button type="submit" class="dlswx-btn" id="dlswx-go" title="Search this location" aria-label="Search">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15.5 14h-.79l-.28-.27a6.5 6.5 0 1 0-.7.7l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0A4.5 4.5 0 1 1 14 9.5 4.5 4.5 0 0 1 9.5 14z"/></svg>
+            </button>
+            <button type="button" class="dlswx-btn" id="dlswx-home" title="Back to Lafayette (107 Scottsville Rd)" aria-label="Reset to Lafayette">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 4 9v12h6v-7h4v7h6V9z"/></svg>
+            </button>
+            <span class="dlswx-msg" id="dlswx-msg"></span>
+          </form>
         </div>
         <div id="dlswx-alerts" class="dlswx-alerts" style="display:none"></div>
         <div class="dlswx-grid">
           <div class="dlswx-radar">
             <div class="dlswx-sub">Live radar</div>
             <img id="dlswx-radar-img" alt="NWS radar loop" />
-            <div class="dlswx-radar-cap">NOAA / NWS RIDGE radar &middot; loops ~1 hr</div>
+            <div class="dlswx-radar-cap" id="dlswx-radar-cap">NOAA / NWS RIDGE radar &middot; loops ~1 hr</div>
           </div>
           <div class="dlswx-now"><div id="dlswx-current" class="dlswx-current"></div></div>
           <div class="dlswx-hourwrap"><div class="dlswx-sub">Next 12 hours</div><div id="dlswx-hourly" class="dlswx-hourly"></div></div>
           <div class="dlswx-weekwrap"><div class="dlswx-sub">7-day outlook</div><div id="dlswx-7day" class="dlswx-7day"></div></div>
         </div>
         <div class="dlswx-foot">
-          Data: NOAA / National Weather Service (api.weather.gov) &middot;
-          <a id="dlswx-refresh" href="#">refresh</a>
+          Data: NOAA / National Weather Service (api.weather.gov), geocoding by OpenStreetMap &middot;
+          <span id="dlswx-updated">updating&hellip;</span> &middot; <a id="dlswx-refresh" href="#">refresh</a>
         </div>
       </div>`;
 
+    const form = this.domElement.querySelector('#dlswx-form') as HTMLFormElement;
+    if (form) { form.onsubmit = (e) => { e.preventDefault(); this._search(); }; }
+    const home = this.domElement.querySelector('#dlswx-home') as HTMLElement;
+    if (home) { home.onclick = () => { this._goHome(); }; }
     const refreshLink = this.domElement.querySelector('#dlswx-refresh') as HTMLElement;
     if (refreshLink) { refreshLink.onclick = (e) => { e.preventDefault(); this._loadAll(); }; }
 
@@ -85,30 +113,89 @@ export default class WeatherPanelWebPart extends BaseClientSideWebPart<IWeatherP
     if (this._timer) { clearInterval(this._timer); this._timer = undefined; }
   }
 
+  // ---- search / location ---------------------------------------------------
+
+  private _search(): void {
+    const input = this.domElement.querySelector('#dlswx-q') as HTMLInputElement;
+    const q = ((input && input.value) || '').trim();
+    if (!q) { return; }
+    this._msg('Searching…');
+    this._geocode(q)
+      .then(res => {
+        if (!res) { this._msg('No match — try “City, ST”.'); return; }
+        this._lat = res.lat; this._lon = res.lon; this._label = res.label;
+        this._msg('');
+        this._loadAll();
+      })
+      .catch(() => { this._msg('Search unavailable — try again.'); });
+  }
+
+  private _goHome(): void {
+    const input = this.domElement.querySelector('#dlswx-q') as HTMLInputElement;
+    if (input) { input.value = ''; }
+    this._lat = this._homeLat(); this._lon = this._homeLon(); this._label = this._homeLabel();
+    this._msg('');
+    this._loadAll();
+  }
+
+  // Keyless US geocoder (OpenStreetMap / Nominatim). Only called on an explicit
+  // search, so volume stays well within acceptable use.
+  private _geocode(q: string): Promise<{ lat: string; lon: string; label: string } | null> {
+    const url = 'https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=us&q=' + encodeURIComponent(q);
+    return fetch(url, { headers: { 'Accept': 'application/json' } })
+      .then(r => r.json())
+      .then((j: any) => {
+        if (j && j.length) { return { lat: String(j[0].lat), lon: String(j[0].lon), label: q }; }
+        return null;
+      });
+  }
+
   // ---- data ----------------------------------------------------------------
 
-  private _lat(): string { return (this.properties.latitude || '36.524').trim(); }
-  private _lon(): string { return (this.properties.longitude || '-86.026').trim(); }
-  private _site(): string { return (this.properties.radarSite || 'KOHX').trim().toUpperCase(); }
-
   private _loadAll(): void {
-    this._loadRadar();
+    this._setLoc(this._label);
+    this._loadPoint();
     this._loadAlerts();
-    this._loadForecast();
     const u = this.domElement.querySelector('#dlswx-updated');
     if (u) { u.textContent = 'Updated ' + fmtTime(new Date()); }
   }
 
-  private _loadRadar(): void {
+  // One /points call resolves: nearest radar station, the forecast URLs, and the
+  // city/state label - so radar + forecast + label all follow the searched point.
+  private _loadPoint(): void {
+    fetch('https://api.weather.gov/points/' + this._lat + ',' + this._lon, { headers: { 'Accept': 'application/geo+json' } })
+      .then(r => r.json())
+      .then(pj => {
+        const props = (pj && pj.properties) || {};
+        this._setRadar((props.radarStation || this._fallbackSite()));
+        const rl = props.relativeLocation && props.relativeLocation.properties;
+        if (rl && rl.city && rl.state) { this._setLoc(rl.city + ', ' + rl.state); }
+        if (props.forecastHourly) { this._renderHourly(props.forecastHourly); }
+        if (props.forecast) { this._render7day(props.forecast); }
+        if (!props.forecast && !props.forecastHourly) {
+          this._fail('#dlswx-current', 'Forecast unavailable for this location.');
+          this._fail('#dlswx-hourly', ''); this._fail('#dlswx-7day', '');
+        }
+      })
+      .catch(() => {
+        this._setRadar(this._fallbackSite());
+        this._fail('#dlswx-current', 'Forecast unavailable for this location.');
+        this._fail('#dlswx-hourly', ''); this._fail('#dlswx-7day', '');
+      });
+  }
+
+  private _setRadar(station: string): void {
+    const st = String(station || this._fallbackSite()).toUpperCase();
     const img = this.domElement.querySelector('#dlswx-radar-img') as HTMLImageElement;
-    if (!img) { return; }
-    img.src = 'https://radar.weather.gov/ridge/standard/' + this._site() + '_loop.gif?cb=' + Date.now();
+    if (img) { img.src = 'https://radar.weather.gov/ridge/standard/' + st + '_loop.gif?cb=' + Date.now(); }
+    const cap = this.domElement.querySelector('#dlswx-radar-cap');
+    if (cap) { cap.textContent = 'NOAA / NWS ' + st + ' radar · loops ~1 hr'; }
   }
 
   private _loadAlerts(): void {
     const box = this.domElement.querySelector('#dlswx-alerts') as HTMLElement;
     if (!box) { return; }
-    fetch('https://api.weather.gov/alerts/active?point=' + this._lat() + ',' + this._lon(),
+    fetch('https://api.weather.gov/alerts/active?point=' + this._lat + ',' + this._lon,
           { headers: { 'Accept': 'application/geo+json' } })
       .then(r => r.json())
       .then(j => {
@@ -124,23 +211,6 @@ export default class WeatherPanelWebPart extends BaseClientSideWebPart<IWeatherP
         box.style.display = 'block';
       })
       .catch(() => { box.style.display = 'none'; });
-  }
-
-  private _loadForecast(): void {
-    const lat = this._lat(), lon = this._lon();
-    fetch('https://api.weather.gov/points/' + lat + ',' + lon, { headers: { 'Accept': 'application/geo+json' } })
-      .then(r => r.json())
-      .then(pj => {
-        const props = (pj && pj.properties) || {};
-        if (props.forecastHourly) { this._renderHourly(props.forecastHourly); }
-        if (props.forecast) { this._render7day(props.forecast); }
-        if (!props.forecast && !props.forecastHourly) { throw new Error('no forecast urls'); }
-      })
-      .catch(() => {
-        this._fail('#dlswx-current', 'Forecast temporarily unavailable.');
-        this._fail('#dlswx-hourly', '');
-        this._fail('#dlswx-7day', '');
-      });
   }
 
   private _renderHourly(url: string): void {
@@ -216,6 +286,13 @@ export default class WeatherPanelWebPart extends BaseClientSideWebPart<IWeatherP
     if (el) { el.innerHTML = msg ? '<div class="dlswx-err">' + esc(msg) + '</div>' : ''; }
   }
 
+  private _msg(t: string): void {
+    const e = this.domElement.querySelector('#dlswx-msg'); if (e) { e.textContent = t; }
+  }
+  private _setLoc(t: string): void {
+    const e = this.domElement.querySelector('#dlswx-loc'); if (e) { e.textContent = t; }
+  }
+
   // ---- styling -------------------------------------------------------------
 
   private _injectCss(): void {
@@ -233,15 +310,15 @@ export default class WeatherPanelWebPart extends BaseClientSideWebPart<IWeatherP
   protected getPropertyPaneConfiguration(): IPropertyPaneConfiguration {
     return {
       pages: [{
-        header: { description: 'Weather panel settings (NOAA/NWS). Radar site code KOHX = local (Nashville/Old Hickory); a regional code like SOUTHEAST or SOUTHMISSVLY shows a wider multi-state view.' },
+        header: { description: 'Default ("home") weather location. The search box on the panel can switch to any US address or city; every reload returns to this home point.' },
         groups: [{
-          groupName: 'Location',
+          groupName: 'Home location',
           groupFields: [
             PropertyPaneTextField('title', { label: 'Panel title' }),
-            PropertyPaneTextField('locationLabel', { label: 'Location label (display only)' }),
-            PropertyPaneTextField('latitude', { label: 'Latitude' }),
-            PropertyPaneTextField('longitude', { label: 'Longitude' }),
-            PropertyPaneTextField('radarSite', { label: 'NWS radar code (KOHX local; SOUTHEAST/SOUTHMISSVLY = regional)' })
+            PropertyPaneTextField('locationLabel', { label: 'Home label (e.g. Lafayette, TN)' }),
+            PropertyPaneTextField('latitude', { label: 'Home latitude' }),
+            PropertyPaneTextField('longitude', { label: 'Home longitude' }),
+            PropertyPaneTextField('radarSite', { label: 'Fallback radar code (used only if NWS lookup fails)' })
           ]
         }]
       }]
@@ -272,24 +349,29 @@ function shortName(n: string): string {
   return n.replace('This Afternoon', 'Today').replace('This Morning', 'Today');
 }
 
-// DARK theme, v1.0.0.5. Full-bleed (98vw) at wide-landscape to line up with the Deed
-// Map. Radar capped near native res (crisp). Wide = top row (radar | current | 12h)
-// + full-width 7-day card strip. Scoped to .dlswx.
+// DARK theme, v1.0.0.7. Full-bleed (98vw) to line up with the Deed Map; crisp ~660px
+// radar; full-width 7-day strip; header search box (top-right). Scoped to .dlswx.
 const DLSWX_CSS = `
 .dlswx{font-family:'Segoe UI',system-ui,sans-serif;color:#e6e4e2;border:1px solid #3b3a39;border-radius:8px;overflow:hidden;background:#1b1a19;box-shadow:0 1.6px 3.6px rgba(0,0,0,.45);width:100%;box-sizing:border-box}
 @media (min-width:1300px) and (orientation:landscape){.dlswx{width:98vw;position:relative;left:50%;margin-left:-49vw;border-radius:10px}}
 .dlswx *{box-sizing:border-box}
-.dlswx-head{display:flex;justify-content:space-between;align-items:center;padding:10px 16px;background:#0a2c49;color:#fff;border-bottom:1px solid #16334f}
-.dlswx-title{font-size:16px;font-weight:600}
-.dlswx-loc{font-size:12px;opacity:.85;margin-left:8px}
-.dlswx-updated{font-size:11px;opacity:.8}
+.dlswx-head{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px 14px;padding:10px 16px;background:#0a2c49;color:#fff;border-bottom:1px solid #16334f}
+.dlswx-head-title{display:flex;align-items:baseline;gap:8px;min-width:0;flex:1 1 auto}
+.dlswx-title{font-size:16px;font-weight:600;white-space:nowrap}
+.dlswx-loc{font-size:12px;opacity:.85;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dlswx-search{display:flex;align-items:center;gap:6px;flex:0 1 auto}
+.dlswx-q{width:240px;max-width:52vw;height:30px;padding:0 10px;border-radius:6px;border:1px solid #29547d;background:#0f3c63;color:#fff;font-size:13px;font-family:inherit;outline:none}
+.dlswx-q:focus{border-color:#4a90d9;background:#114a72}
+.dlswx-q::placeholder{color:#9fc0db}
+.dlswx-btn{display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;flex:0 0 auto;border-radius:6px;border:1px solid #29547d;background:#0f3c63;color:#dceaf7;cursor:pointer;padding:0}
+.dlswx-btn:hover{background:#16527f}
+.dlswx-btn svg{width:16px;height:16px;fill:currentColor;display:block}
+.dlswx-msg{font-size:11px;color:#f3d9a0;min-height:14px;white-space:nowrap}
 .dlswx-alerts{padding:8px 16px 0}
 .dlswx-alert{padding:7px 11px;border-radius:6px;margin-bottom:6px;font-size:13px;font-weight:600}
 .dlswx-alert-sev{background:#3b1416;color:#f5a3a6;border:1px solid #7a2a2e}
 .dlswx-alert-mod{background:#3a3209;color:#f3e0a0;border:1px solid #7a6a1e}
 .dlswx-alert-h{display:block;font-weight:400;font-size:12px;margin-top:2px;opacity:.9}
-
-/* GRID base = mobile stack */
 .dlswx-grid{display:grid;grid-template-columns:1fr;gap:14px;padding:12px 16px;grid-template-areas:"rad" "now" "hour" "week"}
 .dlswx-radar{grid-area:rad;display:flex;flex-direction:column;min-width:0}
 .dlswx-now{grid-area:now;min-width:0}
