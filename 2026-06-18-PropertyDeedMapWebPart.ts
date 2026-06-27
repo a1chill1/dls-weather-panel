@@ -181,6 +181,9 @@ const ZJURS: any[] = [
     names:{'A-1':'Agricultural','R-1':'Residential','R-2':'Residential (high density)','C-1':'Commercial','I-1':'Industrial','I-2':'Industrial (heavy)'} }
 ];
 function pinKey(s:any){ return (s==null?'':String(s)).toUpperCase().replace(/\s+/g,' ').trim(); }
+function wkNorm5(p:any){ p=(p==null?'':String(p)).trim().split(/\s+/)[0]; if(!p) return ''; const a=p.split('.'); const i=a[0].replace(/[^0-9]/g,''); if(i==='') return ''; const dec=((a[1]||'').replace(/[^0-9]/g,'')+'00').substring(0,2); const ii=('000'+i); return ii.substring(ii.length-3)+dec; }
+function wkNormMap(m:any){ m=(m==null?'':String(m)).trim().split(/\s+/)[0].toUpperCase(); const mm=m.match(/^([0-9]+)([A-Z]?)$/); if(mm){ const d=('000'+mm[1]); return d.substring(d.length-3)+mm[2]; } return m; }
+const WK_TN_SVC='https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0/query';
 function jurById(id:any){ for(let i=0;i<ZJURS.length;i++){ if(ZJURS[i].id===id) return ZJURS[i]; } return null; }
 function jurAt(ll:any){ let best:any=null, ba=Infinity; ZJURS.forEach((j:any)=>{ if(!j.taggable) return; const b=j.bounds; if(ll.lat>=b[0][0]&&ll.lat<=b[1][0]&&ll.lng>=b[0][1]&&ll.lng<=b[1][1]){ const area=(b[1][0]-b[0][0])*(b[1][1]-b[0][1]); if(area<ba){ ba=area; best=j; } } }); return best; }
 function nearestJur(ll:any){ let best:any=null, bd=Infinity; ZJURS.forEach((j:any)=>{ if(!j.taggable) return; const b=j.bounds; const cy=(b[0][0]+b[1][0])/2, cx=(b[0][1]+b[1][1])/2; const d=(ll.lat-cy)*(ll.lat-cy)+(ll.lng-cx)*(ll.lng-cx); if(d<bd){ bd=d; best=j; } }); return best; }
@@ -255,6 +258,7 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
   private loadedBounds:any = null; private loadedZoom:number = -1;
   private zoneByPin:any = {}; private zoningView=true; private zoningEdit=false;
   private zTarget:any = null; private loadSeq=0; private tagJur:string='auto';
+  private workedByPin:any={}; private workView=false; private workEdit=false; private wTarget:any=null; private _collW=false; private _workLoaded=false; private workedWipIds:any={}; private _workCount=0; private _workUnresolved=0; private _wipPick:any[]=[]; private _workColorMode:string='flat';
   private splitState:any=null; private splitLayer:any=null; private splitTmp:any[]=[]; private splitMarkers:any[]=[]; private _splitClick:any=null; private _splitDrawPopup:any=null;
   private femaLayer:any=null; private _femaOn=false; private areasLayer:any=null; private _areasRenderer:any=null; private areas:any[]=[]; private _areasOn=false;
   private areaState:any=null; private areaMarkers:any[]=[]; private areaLine:any=null; private _areaClick:any=null;
@@ -324,6 +328,12 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
         .b-ok{background:#16a34a;} .b-warn{background:#d97706;}
         .leaflet-popup-content{margin:10px 12px;max-width:280px;}
         .dls-pm #zmode{background:#33445a;color:#fff;}
+        .dls-pm #wmode{background:#2a4a33;color:#fff;}
+        .wk-row{margin:3px 0}
+        .wk-row select,.wk-row input{width:100%;box-sizing:border-box;padding:4px;border:1px solid #ccc;border-radius:4px;font:12px sans-serif}
+        .wk-or{font-size:11px;color:#888;margin:6px 0 2px;text-align:center}
+        .wk-cur{font-size:12px;margin:2px 0}
+        .dls-wk{margin:2px 0}
         .dls-pm #zlegend{position:absolute;z-index:900;top:8px;right:8px;background:rgba(255,255,255,.98);border:1px solid #cbd5e1;border-radius:8px;font-size:11px;width:242px;max-height:calc(100% - 22px);overflow:auto;box-shadow:0 6px 20px rgba(0,0,0,.16);display:none;}
         .dls-pm #zlegend b{font-size:11.5px;} .dls-pm #zlegend .zi{display:flex;align-items:center;gap:6px;margin:3px 0;}
         .dls-pm #zlegend .zsw{width:13px;height:13px;border-radius:3px;border:1px solid rgba(0,0,0,.3);flex:none;}
@@ -399,6 +409,7 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
           <select id="base"><option value="aerial">Aerial</option><option value="streets" selected>Streets</option><option value="topo">Topo</option></select>
           <select id="zmode" title="Zoning layer (View / Edit)"><option value="off">Zoning: Off</option><option value="view" selected>Zoning: View</option><option value="edit">Zoning: Edit (tag lots)</option></select>
           <select id="proj" title="Survey projects layer (WIP)"><option value="off">Projects: Off</option><option value="on" selected>Projects: On</option></select>
+          <select id="wmode" title="Work history layer (surveyed parcels)"><option value="off" selected>Work history: Off</option><option value="view">Work history: View</option><option value="edit">Work history: Edit (mark surveyed)</option></select>
           <button id="fs" class="ghost" title="Full screen (Esc to exit)">Full screen</button>
           <span id="status">Loading&hellip;</span>
         </div>
@@ -422,6 +433,7 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
     $('#base').onchange = (e:any)=>this.setBase(e.target.value);
     $('#zmode').onchange = (e:any)=>this.setZoningMode(e.target.value);
     $('#proj').onchange = (e:any)=>this.setProjectsMode(e.target.value==='on');
+    $('#wmode').onchange = (e:any)=>this.setWorkMode(e.target.value);
     $('#fs').onclick = ()=>this.toggleFs();
     this.buildMap();
     this.setZoningMode('view');   // default to Zoning: View
@@ -457,6 +469,7 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
     setTimeout(()=>{ try{ this.map.invalidateSize(); }catch(e){} this.loadParcels(); },400);
     window.addEventListener('resize',()=>{ clearTimeout(this.rzTimer); this.rzTimer=setTimeout(()=>{ try{ if(this.map) this.map.invalidateSize(); }catch(e){} },200); });
     this.loadZoning();
+    this.loadWorked();
     this.loadAreas();
   }
 
@@ -524,6 +537,7 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
       const src=SOURCES.filter((s)=>s.id===feat.properties.__src)[0]||SOURCES[0];
       const n=normalize(feat.properties,src);
       const ll=(ev&&ev.latlng)||(layer.getBounds&&layer.getBounds().getCenter());
+      if(this.workEdit){ this.openWorkPicker(n, ll, feat); return; }
       if(this.zoningEdit){ this.openZonePicker(n, ll, feat); return; }
       L.popup({maxWidth:300,autoPanPadding:[24,24]}).setLatLng(ll).setContent(this.popupHtml(n)).openOn(this.map);
     });
@@ -541,6 +555,7 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
     if(n.subdiv) row('Subdiv', n.subdiv+(n.lot?'  Lot '+n.lot:''));
     if(n.zoning) row('Zoning', n.zoning);
     const zt=this.zoneByPin[pinKey(n.pin)]; if(zt){ const zj=jurById(zt.jur)||ZJURS[0]; if(zt.split&&zt.pieces){ row('Zone ('+(zt.jur||'')+')', zt.pieces.map((p:any)=>p.z||'blank').join(' / ')+' (split lot)'); } else { row('Zone ('+(zt.jur||'')+')', zt.zone+' — '+((zj.names&&zj.names[zt.zone])||'')+(zt.flood?' · Floodplain':'')); } }
+    if(this.workView){ const wj=this.workedByPin[pinKey(n.pin)]; if(wj&&wj.length){ let wb=''; for(let wi=0;wi<wj.length;wi++){ const w=wj[wi]; wb+='<div class="dls-wk"><b>'+esc(w.job||'')+'</b>'+(w.name?' '+esc(w.name):'')+(w.folder?' <a class="dls-pop-a" href="'+esc(w.folder)+'" target="_blank" rel="noopener">folder &#8599;</a>':'')+'</div>'; } rows+='<tr><td class="k">Surveyed</td><td>'+wb+'</td></tr>'; } }
     if(n.deedBook||n.deedPage) row('Deed','Bk '+n.deedBook+' Pg '+n.deedPage);
     else if(n.legalref) row('Deed ref', n.legalref);
     else if(n.deedref) row('Deed ref', n.deedref);
@@ -578,7 +593,123 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
     return out+'</div>';
   }
 
-  private onAct(act:string, id:string, arg:string): void {
+    // ======================= Work history layer (surveyed parcels) =======================
+  private setWorkMode(v:string): void {
+    this.workView=(v==='view'||v==='edit');
+    this.workEdit=(v==='edit');
+    if(this.workEdit && this.zoningEdit){ this.zoningEdit=false; const _zs=this.domElement.querySelector('#zmode') as any; if(_zs) _zs.value='view'; this.zoningView=true; }
+    this.buildLegend();
+    this.restyleParcels();
+    if(v==='edit') this.setStatus('Work history EDIT — click a lot, then pick its WIP job (or type an older one) to mark it surveyed.');
+    else if(v==='view') this.setStatus('Work history VIEW — surveyed lots are outlined and filled green. '+this._workCount+' lots.');
+    else this.setStatus('Work history off.');
+    this.map.closePopup();
+  }
+
+  private workColor(w:any): any {
+    if(this._workColorMode==='year' || this._workColorMode==='month'){
+      let yr=0; for(let i=0;i<w.length;i++){ const t=String(w[i].job||''); if(/^[0-9]{6}/.test(t)){ const y=2000+parseInt(t.substring(0,2),10); if(y>yr) yr=y; } }
+      const pal:any={2021:'#7c3aed',2022:'#2563eb',2023:'#0891b2',2024:'#16a34a',2025:'#ca8a04',2026:'#dc2626'};
+      const c=pal[yr]||'#16a34a'; return {outline:'#0a3d1f',fill:c};
+    }
+    return {outline:'#0a5a27',fill:'#16a34a'};
+  }
+
+  private countWorkedLots(m:any): number { let n=0; for(const k in m){ n++; } return n; }
+
+  private loadWorked(): void {
+    if(this._workLoaded) return;
+    this.spGet(this.workedApi()+"/items?$select=Id,ParcelID,JobNumber,JobName,FolderURL,County,TaxMap,ParcelNo,WIPItemId,Source,Notes&$top=5000").then((d:any)=>{
+      const items=(d&&d.value)||[]; const m:any={}; const ids:any={}; let unres=0;
+      for(let i=0;i<items.length;i++){ const it=items[i]; if(it.WIPItemId!=null) ids[it.WIPItemId]=1; if(it.ParcelID){ const k=pinKey(it.ParcelID); if(!m[k]) m[k]=[]; m[k].push({id:it.Id,job:it.JobNumber,name:it.JobName,folder:it.FolderURL,county:it.County,src:it.Source,wipId:it.WIPItemId,notes:it.Notes}); } else { unres++; } }
+      this.workedByPin=m; this.workedWipIds=ids; this._workCount=this.countWorkedLots(m); this._workUnresolved=unres; this._workLoaded=true;
+      this.restyleParcels(); if(this.workView) this.buildLegend();
+      this.selfHealWorked();
+    }).catch(()=>{});
+  }
+
+  private selfHealWorked(): void {
+    const url = this.context.pageContext.web.absoluteUrl + "/_api/web/lists(guid'" + this.projectsListGuid + "')/items?$top=500&$select=Id,Title,JobLabel,FolderURL,County,Tax_x0020_Map,Parcel_x0020_Number";
+    this.spGet(url).then((d:any)=>{
+      const items=(d&&d.value)||[]; const todo:any[]=[]; const pk:any[]=[];
+      for(let i=0;i<items.length;i++){ const x=items[i];
+        pk.push({num:(x.Title==null?'':String(x.Title)),name:x.JobLabel||'',folder:x.FolderURL||'',county:x.County||''});
+        if(this.workedWipIds[x.Id]) continue;
+        if(!x.Tax_x0020_Map||!x.Parcel_x0020_Number) continue;
+        todo.push(x);
+      }
+      this._wipPick=pk;
+      if(todo.length) this.healNext(todo,0,0);
+    }).catch(()=>{});
+  }
+
+  private healNext(todo:any[], i:number, made:number): void {
+    if(i>=todo.length){ if(made>0){ this._workLoaded=false; this.loadWorked(); } return; }
+    const x=todo[i]; const self=this;
+    const ccm=String(x.County||'').match(/([0-9]{3})/); const cc=ccm?ccm[1]:'';
+    const map=wkNormMap(x.Tax_x0020_Map); const p5=wkNorm5(x.Parcel_x0020_Number);
+    const next=(n:number)=>self.healNext(todo,i+1,made+n);
+    if(!cc||!p5){ this.createWorked(x,'','Auto-unresolved','missing county/parcel',()=>next(1)); return; }
+    const q=WK_TN_SVC+"?where="+encodeURIComponent("PARCELID LIKE '"+cc+" "+map+"%' AND PARCELID LIKE '%"+p5+" %'")+"&outFields=PARCELID&returnGeometry=false&resultRecordCount=50&f=json";
+    fetch(q).then((r:any)=>r.json()).then((j:any)=>{ const fs=(j&&j.features)||[]; const mm:any[]=[]; for(let k=0;k<fs.length;k++){ const pid=fs[k].attributes.PARCELID; if(pid.substring(0,3)===cc&&pid.substring(4,8).replace(/\s+$/,'')===map&&pid.substring(11,16)===p5) mm.push(pid); } if(mm.length===1){ self.createWorked(x,mm[0],'Auto','',()=>next(1)); } else { self.createWorked(x,'','Auto-unresolved',(mm.length>1?('group ambiguous: '+mm.length+' lots'):'no exact parcel match'),()=>next(1)); } }).catch(()=>next(0));
+  }
+
+  private createWorked(x:any, parcelId:string, source:string, notes:string, cb:any): void {
+    const body:any={Title:(parcelId||String(x.Title||x.Id)),ParcelID:parcelId||'',JobNumber:String(x.Title||''),JobName:x.JobLabel||'',FolderURL:x.FolderURL||'',County:String(x.County||''),TaxMap:String(x.Tax_x0020_Map||''),ParcelNo:String(x.Parcel_x0020_Number||''),WIPItemId:x.Id,Source:source,Notes:notes||''};
+    this.spPost(this.workedApi()+'/items', body).then((r:any)=>{ this.workedWipIds[x.Id]=1; if(cb)cb(); }).catch(()=>{ if(cb)cb(); });
+  }
+
+  private buildWorkPanel(): void {
+    const el=this.domElement.querySelector('#workHost') as any; if(!el) return;
+    let h='<div class="zrow"><span class="zsw" style="background:#16a34a;border:2px solid #0a5a27"></span> Surveyed lot</div>';
+    h+='<div class="zdisc">'+this._workCount+' parcels marked surveyed (live from DLS Worked Parcels). ';
+    if(this._workUnresolved) h+='<b>'+this._workUnresolved+'</b> job(s) need a lot picked (review worklist). ';
+    h+='New WIP jobs with a Tax Map &amp; Parcel are added automatically when the map loads. Switch to <b>Edit</b> to mark a lot surveyed by hand.</div>';
+    el.innerHTML=h;
+    const c=this.domElement.querySelector('#wCount'); if(c) c.textContent=this._workCount+' lots';
+  }
+
+  private openWorkPicker(n:any, ll:any, feat?:any): void {
+    const pin=pinKey(n.pin); if(!pin){ this.setStatus('This parcel has no ID — cannot mark it.'); return; }
+    this.wTarget={pin:pin, raw:String(n.pin).trim(), ll:ll};
+    this.renderWorkPicker();
+  }
+
+  private renderWorkPicker(): void {
+    const t=this.wTarget; if(!t) return;
+    const cur=this.workedByPin[t.pin]||[];
+    let curHtml=''; for(let i=0;i<cur.length;i++){ const w=cur[i]; curHtml+='<div class="wk-cur"><b>'+esc(w.job||'')+'</b> '+esc(w.name||'')+' <button class="zp-clear" data-act="wdel" data-arg="'+w.id+'">remove</button></div>'; }
+    let opts='<option value="">— choose a WIP job —</option>'; for(let i=0;i<this._wipPick.length;i++){ const p=this._wipPick[i]; opts+='<option value="'+i+'">'+esc((p.num||'')+(p.name?(' '+p.name):''))+'</option>'; }
+    const html='<div class="zp"><div class="zp-h">Mark surveyed</div>'
+      +'<div class="zp-pin">Parcel: <b>'+esc(t.raw)+'</b></div>'
+      +(curHtml?('<div class="zp-cur">Already recorded:'+curHtml+'</div>'):'')
+      +'<div class="wk-row"><select id="wkJob">'+opts+'</select></div>'
+      +'<div class="wk-or">— or type an older (pre-WIP) job —</div>'
+      +'<div class="wk-row"><input id="wkNum" placeholder="Job #"/></div>'
+      +'<div class="wk-row"><input id="wkName" placeholder="Job name"/></div>'
+      +'<div class="wk-row"><input id="wkFolder" placeholder="Folder URL (optional)"/></div>'
+      +'<div style="margin-top:6px"><button class="zbtn2" data-act="wsave">Mark surveyed</button></div>'
+      +'<div class="zp-note">Marks this exact lot surveyed and links the job folder. Full history — adding a second job keeps the first.</div></div>';
+    L.popup({maxWidth:300,autoPanPadding:[24,24]}).setLatLng(t.ll||this.map.getCenter()).setContent(html).openOn(this.map);
+  }
+
+  private saveWorked(): void {
+    const t=this.wTarget; if(!t||!t.pin) return;
+    const jobSel=this.domElement.querySelector('#wkJob') as any;
+    let num='', name='', folder='', county='';
+    if(jobSel && jobSel.value!==''){ const p=this._wipPick[+jobSel.value]; if(p){ num=p.num; name=p.name; folder=p.folder; county=p.county; } }
+    if(!num){ const ni=this.domElement.querySelector('#wkNum') as any; const na=this.domElement.querySelector('#wkName') as any; const fo=this.domElement.querySelector('#wkFolder') as any; num=ni?(ni.value||'').trim():''; name=na?(na.value||'').trim():''; folder=fo?(fo.value||'').trim():''; }
+    if(!num){ this.setStatus('Pick a WIP job or type a job number first.'); return; }
+    const body:any={Title:t.raw,ParcelID:t.raw,JobNumber:num,JobName:name,FolderURL:folder,County:county,TaxMap:'',ParcelNo:'',Source:'Manual',Notes:'tagged on map'};
+    this.spPost(this.workedApi()+'/items', body).then((r:any)=>{ if(r.status>=200&&r.status<300) return r.json(); throw new Error('HTTP '+r.status); }).then((d:any)=>{ const k=t.pin; if(!this.workedByPin[k]) this.workedByPin[k]=[]; this.workedByPin[k].push({id:d&&d.Id,job:num,name:name,folder:folder,county:county,src:'Manual'}); this._workCount=this.countWorkedLots(this.workedByPin); this.restyleParcels(); if(this.workView) this.buildLegend(); this.setStatus('Marked '+t.raw+' surveyed → '+num); this.map.closePopup(); }).catch((e:any)=>this.setStatus('Save failed: '+e));
+  }
+
+  private clearWorked(rowId:string): void {
+    const t=this.wTarget; const id=parseInt(rowId,10); if(!id) return;
+    this.spPost(this.workedApi()+'/items('+id+')', null, {'X-HTTP-Method':'DELETE','IF-MATCH':'*'}).then((r:any)=>{ if(r.status>=200&&r.status<300){ if(t&&this.workedByPin[t.pin]){ const arr=this.workedByPin[t.pin]; const na:any[]=[]; for(let i=0;i<arr.length;i++){ if(arr[i].id!==id) na.push(arr[i]); } if(na.length) this.workedByPin[t.pin]=na; else delete this.workedByPin[t.pin]; } this._workCount=this.countWorkedLots(this.workedByPin); this.restyleParcels(); if(this.workView) this.buildLegend(); if(t) this.renderWorkPicker(); this.setStatus('Removed.'); } else this.setStatus('Remove failed ('+r.status+')'); }).catch((e:any)=>this.setStatus('Remove failed: '+e));
+  }
+
+private onAct(act:string, id:string, arg:string): void {
     if(act==='deedGo') this.deedGo(id);
     else if(act==='deedName') this.deedName(id);
     else if(act==='deedGoUS') this.deedGoUS(id);
@@ -594,6 +725,8 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
     else if(act==='zareafinish') this.finishAreaDraw();
     else if(act==='zareacancel') this.cancelAreaDraw();
     else if(act==='zareasave') this.saveArea(arg);
+    else if(act==='wsave') this.saveWorked();
+    else if(act==='wdel') this.clearWorked(arg);
   }
 
   private openDeferred(): any { const w=window.open('','_blank'); try{ if(w) w.document.write('<p style="font:14px/1.4 sans-serif;padding:18px;color:#333">Looking up the latest deed…</p>'); }catch(e){} return w; }
@@ -658,6 +791,7 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
   // ======================= RBS zoning layer =======================
   private cfg(): any { return (SPHttpClient as any).configurations.v1; }
   private listApi(): string { return this.context.pageContext.web.absoluteUrl + "/_api/web/lists/getbytitle('" + this.zoneListTitle.replace(/'/g,"''") + "')"; }
+  private workedApi(): string { return this.context.pageContext.web.absoluteUrl + "/_api/web/lists/getbytitle('DLS Worked Parcels')"; }
   private spGet(url:string): Promise<any> { return this.context.spHttpClient.get(url, this.cfg(), {headers:{Accept:'application/json;odata=nometadata'}}).then((r:any)=>r.json()); }
   private spPost(url:string, body:any, extra?:any): Promise<any> {
     const headers:any = {Accept:'application/json;odata=nometadata','Content-Type':'application/json;odata=nometadata','odata-version':''};
@@ -675,6 +809,7 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
 
   private featPin(ft:any): string { const src=SOURCES.filter((s)=>s.id===ft.properties.__src)[0]||SOURCES[0]; return pinKey(pick(ft.properties, src.f.pin)); }
   private parcelStyle(ft:any): any {
+    if(this.workView){ const w=this.workedByPin[this.featPin(ft)]; if(w&&w.length){ const c=this.workColor(w); return {color:c.outline,weight:3,fillColor:c.fill,fillOpacity:0.5}; } }
     if(this.zoningView){ const z=this.zoneByPin[this.featPin(ft)]; if(z && this.jurShow[z.jur]!==false){ if(z.split) return {color:'#6b5300',weight:1,fillColor:'#000',fillOpacity:0.001}; const j=jurById(z.jur)||ZJURS[0]; const c=(j.colors&&j.colors[z.zone])||'#888'; return {color:'#6b5300',weight:1,fillColor:c,fillOpacity:0.55}; } }
     return {color:'#ffd24d',weight:1,fillColor:'#000',fillOpacity:0.001};
   }
@@ -683,17 +818,19 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
   // ---- ONE combined legend: collapsible Zoning + Projects sections (in #zlegend) ----
   private buildLegend(): void {
     const el=this.domElement.querySelector('#zlegend') as any; if(!el) return;
-    const showZ=this.zoningView, showP=this._projOn;
-    if(!showZ && !showP){ el.style.display='none'; el.innerHTML=''; return; }
+    const showZ=this.zoningView, showP=this._projOn, showW=this.workView;
+    if(!showZ && !showP && !showW){ el.style.display='none'; el.innerHTML=''; return; }
     el.style.display='block';
     let h='';
     if(showZ) h+='<div class="lp-sec'+(this._collZ?' coll':'')+'"><div class="lp-hd" data-sec="Z"><span class="tw">&#9662;</span> Zoning</div><div class="lp-bd" id="zoneHost"></div></div>';
     if(showP) h+='<div class="lp-sec'+(this._collP?' coll':'')+'"><div class="lp-hd" data-sec="P"><span class="tw">&#9662;</span> Projects <span id="pCount" class="pp-ct"></span></div><div class="lp-bd" id="projHost"></div></div>';
+    if(showW) h+='<div class="lp-sec'+(this._collW?' coll':'')+'"><div class="lp-hd" data-sec="W"><span class="tw">&#9662;</span> Work history <span id="wCount" class="pp-ct"></span></div><div class="lp-bd" id="workHost"></div></div>';
     el.innerHTML=h;
     const self=this;
-    const hds=el.querySelectorAll('.lp-hd'); for(let i=0;i<hds.length;i++){ hds[i].addEventListener('click',function(){ const s=this.getAttribute('data-sec'); if(s==='Z') self._collZ=!self._collZ; else self._collP=!self._collP; if(this.parentNode) this.parentNode.classList.toggle('coll'); }); }
+    const hds=el.querySelectorAll('.lp-hd'); for(let i=0;i<hds.length;i++){ hds[i].addEventListener('click',function(){ const s=this.getAttribute('data-sec'); if(s==='Z') self._collZ=!self._collZ; else if(s==='P') self._collP=!self._collP; else self._collW=!self._collW; if(this.parentNode) this.parentNode.classList.toggle('coll'); }); }
     if(showZ) this.buildZPanel();
     if(showP){ this.buildProjectPanel(); this.renderProjectPins(); }
+    if(showW){ this.buildWorkPanel(); }
   }
 
   private buildZPanel(): void {
@@ -726,6 +863,7 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
   private setZoningMode(v:string): void {
     this.zoningView = (v==='view'||v==='edit');
     this.zoningEdit = (v==='edit');
+    if(this.zoningEdit && this.workEdit){ this.workEdit=false; const _ws=this.domElement.querySelector('#wmode') as any; if(_ws) _ws.value='view'; this.workView=true; }
     this.buildLegend();
     this.applyOverlays();
     this.restyleParcels();
