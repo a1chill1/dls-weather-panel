@@ -88,5 +88,9 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add -f dist/dls-property-map.sppkg
-          git commit -m "build: property map sppkg v1.0.0.19 [skip ci]"
-          git push
+          git commit -m "build: property map sppkg v1.0.0.19 [skip ci]" || echo "nothing to commit"
+          # Another workflow in this repo (weather panel) can push to main mid-build.
+          # Rebase onto latest main and retry so the dist/ push survives the race.
+          for i in 1 2 3 4 5; do
+            git pull --rebase origin main && git push && { echo "pushed on attempt $i"; break; } || { echo "push attempt $i failed; retrying"; sleep 5; }
+          done
