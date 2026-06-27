@@ -352,11 +352,13 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
         .dls-print-modal .dpx button{padding:8px 14px;border:0;border-radius:6px;font:600 13px sans-serif;cursor:pointer;background:#1565ff;color:#fff;}
         .dls-print-modal .dpx button#dlsPrintClose{background:#555;}
         @media print {
-          body * { visibility:hidden !important; }
-          .dls-print-modal, .dls-print-modal * { visibility:visible !important; }
-          .dls-print-modal{position:fixed;inset:0;background:#fff;display:block;}
-          .dls-print-modal .dlsheet{box-shadow:none;width:8.5in;height:11in;margin:0 auto;}
-          .dls-print-modal .dpx{display:none !important;}
+          @page { size: letter portrait; margin: 0; }
+          html, body { margin:0 !important; padding:0 !important; background:#fff !important; }
+          body > *:not(.dls-print-modal){ display:none !important; }
+          .dls-print-modal{ position:static !important; inset:auto !important; display:block !important; background:#fff !important; width:auto !important; height:auto !important; }
+          .dls-print-modal .dlsheet{ box-shadow:none !important; width:8.5in !important; height:10.7in !important; margin:0 auto !important; padding:0.3in !important; box-sizing:border-box !important; }
+          .dls-print-modal .dpx{ display:none !important; }
+          .dls-print-modal .leaflet-control-container{ display:none !important; }
         }
         .dls-pm #zlegend{position:absolute;z-index:900;top:8px;right:8px;background:rgba(255,255,255,.98);border:1px solid #cbd5e1;border-radius:8px;font-size:11px;width:242px;max-height:calc(100% - 22px);overflow:auto;box-shadow:0 6px 20px rgba(0,0,0,.16);display:none;}
         .dls-pm #zlegend b{font-size:11.5px;} .dls-pm #zlegend .zi{display:flex;align-items:center;gap:6px;margin:3px 0;}
@@ -821,7 +823,7 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
   // ================= v20: print lot sheet (8.5x11, centered + neighbors) =================
   private openPrintSheet(n:any, feat:any): void {
     if(!feat||!feat.geometry){ this.setStatus('Click a lot first, then Print.'); return; }
-    const old=this.domElement.querySelector('#dls-print') as any; if(old){ try{ old.parentNode.removeChild(old); }catch(e){} }
+    const old=document.getElementById('dls-print') as any; if(old){ try{ old.parentNode.removeChild(old); }catch(e){} }
     const host=document.createElement('div'); host.id='dls-print'; host.className='dls-print-modal';
     const short=this.parcelLabelText(feat)||n.pin||'';
     const dt=new Date(); const dstr=(dt.getMonth()+1)+'/'+dt.getDate()+'/'+dt.getFullYear();
@@ -839,14 +841,14 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
       +'<div><b>Deeded Acreage:</b> '+esc(n.acres||'0')+'</div>'
       +'</div><div class="dlscale" id="dlsPrintScale"></div></div>'
       +'</div>';
-    this.domElement.appendChild(host); const self=this;
+    document.body.appendChild(host); const self=this;
     (host.querySelector('#dlsPrintClose') as any).onclick=()=>{ try{ if(self._printMap){ self._printMap.remove(); self._printMap=null; } if(host.parentNode) host.parentNode.removeChild(host); }catch(e){} };
     (host.querySelector('#dlsPrintGo') as any).onclick=()=>{ try{ window.print(); }catch(e){} };
     const pm=L.map(host.querySelector('#dlsPrintMap'),{zoomControl:false,attributionControl:false,minZoom:6,maxZoom:20}); this._printMap=pm;
     L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}',{maxZoom:20}).addTo(pm);
     const r=outerRing(feat.geometry); const c=r?centroid(r):null;
     const gj=L.geoJSON(feat,{interactive:false,style:{color:'#1565ff',weight:3,fillColor:'#4a90e2',fillOpacity:0.25}}).addTo(pm);
-    try{ pm.fitBounds(gj.getBounds().pad(2.2)); }catch(e){ if(c) pm.setView([c[1],c[0]],17); }
+    try{ pm.fitBounds(gj.getBounds().pad(0.7),{maxZoom:19}); }catch(e){ if(c) pm.setView([c[1],c[0]],18); }
     if(c) pm.setView([c[1],c[0]], pm.getZoom());
     this.loadPrintParcels(pm, feat);
     pm.on('moveend zoomend',()=>self.updatePrintScale(pm,host));
