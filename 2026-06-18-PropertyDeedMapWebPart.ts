@@ -840,7 +840,7 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
       +'</div><div class="dlscale" id="dlsPrintScale"></div></div>'
       +'</div>';
     this.domElement.appendChild(host); const self=this;
-    (host.querySelector('#dlsPrintClose') as any).onclick=()=>{ try{ if(self._printMap){ self._printMap.remove(); self._printMap=null; } host.parentNode.removeChild(host); }catch(e){} };
+    (host.querySelector('#dlsPrintClose') as any).onclick=()=>{ try{ if(self._printMap){ self._printMap.remove(); self._printMap=null; } if(host.parentNode) host.parentNode.removeChild(host); }catch(e){} };
     (host.querySelector('#dlsPrintGo') as any).onclick=()=>{ try{ window.print(); }catch(e){} };
     const pm=L.map(host.querySelector('#dlsPrintMap'),{zoomControl:false,attributionControl:false,minZoom:6,maxZoom:20}); this._printMap=pm;
     L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}',{maxZoom:20}).addTo(pm);
