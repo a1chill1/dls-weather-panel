@@ -47,7 +47,7 @@ jobs:
           ps = 'config/package-solution.json'
           d = json.load(open(ps, encoding='utf-8'))
           d['solution']['id'] = 'feef3239-b0e0-4474-bc12-dc0a4cf91a9c'
-          d['solution']['version'] = '1.0.0.4'
+          d['solution']['version'] = '1.0.0.5'
           json.dump(d, open(ps, 'w', encoding='utf-8'), indent=2)
           mf = glob.glob('src/webparts/weatherPanel/*.manifest.json')[0]
           t = open(mf, encoding='utf-8').read()
@@ -86,5 +86,5 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add -f dist/dls-weather-panel.sppkg
-          git commit -m "build: weather panel sppkg v1.0.0.4 [skip ci]"
+          git commit -m "build: weather panel sppkg v1.0.0.5 [skip ci]"
           git push
