@@ -260,6 +260,7 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
   private areaState:any=null; private areaMarkers:any[]=[]; private areaLine:any=null; private _areaClick:any=null;
   private projects:any[]=[]; private projectLayer:any=null; private _projRenderer:any=null; private _projOn=false; private _projLoaded=false;
   private pStatusOn:any={}; private pCountyOn:any={}; private pTypeOn:any={}; private pYearOn:any={}; private pDeadlineOn:any={}; private pSearch='';
+  private jurShow:any={RBS:true,Lafayette:true,Macon:true}; private _collZ=false; private _collP=false; private _collLegend=false; private _dimColl:any={status:false,deadline:false,county:true,type:false,year:true};
 
   protected onInit(): Promise<void> {
     if (!document.getElementById('dls-leaflet-css')) {
@@ -323,7 +324,7 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
         .b-ok{background:#16a34a;} .b-warn{background:#d97706;}
         .leaflet-popup-content{margin:10px 12px;max-width:280px;}
         .dls-pm #zmode{background:#33445a;color:#fff;}
-        .dls-pm #zlegend{position:absolute;z-index:900;bottom:14px;right:8px;background:rgba(255,255,255,.96);border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:11px;width:236px;max-height:78%;overflow:auto;display:none;}
+        .dls-pm #zlegend{position:absolute;z-index:900;top:8px;right:8px;background:rgba(255,255,255,.98);border:1px solid #cbd5e1;border-radius:8px;font-size:11px;width:242px;max-height:calc(100% - 22px);overflow:auto;box-shadow:0 6px 20px rgba(0,0,0,.16);display:none;}
         .dls-pm #zlegend b{font-size:11.5px;} .dls-pm #zlegend .zi{display:flex;align-items:center;gap:6px;margin:3px 0;}
         .dls-pm #zlegend .zsw{width:13px;height:13px;border-radius:3px;border:1px solid rgba(0,0,0,.3);flex:none;}
         .dls-pm #zlegend .zdisc{margin-top:5px;border-top:1px dashed #cbd5e1;padding-top:4px;color:#64748b;}
@@ -358,21 +359,31 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
         .zp .zp-save{background:#16a34a;color:#fff;border:1px solid transparent;border-radius:5px;padding:4px 10px;font-size:11px;font-weight:600;cursor:pointer;}
         .znum{background:#1d4ed8 !important;color:#fff;border:none !important;border-radius:50%;width:18px !important;height:18px !important;line-height:18px;text-align:center;font-size:11px;font-weight:700;box-shadow:0 1px 3px rgba(0,0,0,.45);}
         .dls-pm #proj{background:#33445a;color:#fff;}
-        .dls-pm #plegend{position:absolute;z-index:950;top:8px;left:8px;width:240px;max-height:calc(100% - 22px);overflow:auto;background:rgba(255,255,255,.98);border:1px solid #cbd5e1;border-radius:8px;box-shadow:0 6px 20px rgba(0,0,0,.18);display:none;}
-        .dls-pm #plegend .pp-h{display:flex;align-items:center;gap:6px;padding:8px 10px;background:#1f2a37;color:#fff;border-radius:8px 8px 0 0;font-size:12px;position:sticky;top:0;z-index:1;}
-        .dls-pm #plegend .pp-h b{font-size:12.5px;} .dls-pm #plegend .pp-ct{color:#9fb0c3;font-size:10px;flex:1;}
-        .dls-pm #plegend .pp-x{cursor:pointer;color:#cbd5e1;font-weight:700;font-size:15px;line-height:1;}
-        .dls-pm #plegend .pp-body{padding:8px 10px;}
-        .dls-pm #plegend .pp-search{width:100%;box-sizing:border-box;font-size:11.5px;padding:5px 7px;border:1px solid #cbd5e1;border-radius:5px;margin-bottom:6px;}
-        .dls-pm #plegend .pp-reset{width:100%;font-size:11px;padding:5px;margin-bottom:9px;background:#33445a;color:#fff;border:none;border-radius:5px;cursor:pointer;font-weight:600;}
-        .dls-pm #plegend .pp-sec{margin-bottom:9px;}
-        .dls-pm #plegend .pp-lbl{font-size:9.5px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.03em;margin-bottom:3px;display:flex;justify-content:space-between;align-items:center;}
-        .dls-pm #plegend .pp-all{color:#2563eb;cursor:pointer;font-weight:600;text-transform:none;letter-spacing:0;font-size:10px;}
-        .dls-pm #plegend .pp-row{display:flex;align-items:center;gap:6px;padding:2px 3px;border-radius:4px;cursor:pointer;font-size:11px;}
-        .dls-pm #plegend .pp-row:hover{background:#f1f5f9;} .dls-pm #plegend .pp-row.off{opacity:.4;}
-        .dls-pm #plegend .pp-dot{width:11px;height:11px;border-radius:50%;border:1px solid rgba(0,0,0,.3);flex:none;}
-        .dls-pm #plegend .pp-sq{width:11px;height:11px;border-radius:3px;background:#94a3b8;flex:none;}
-        .dls-pm #plegend .pp-nm{flex:1;color:#0f172a;} .dls-pm #plegend .pp-n{color:#64748b;font-size:10px;}
+        .dls-pm #plegend{display:none;}
+        .dls-pm .pp-ct{color:#9fb0c3;font-size:10px;font-weight:400;}
+        .dls-pm .pp-search{width:100%;box-sizing:border-box;font-size:11.5px;padding:5px 7px;border:1px solid #cbd5e1;border-radius:5px;margin-bottom:6px;}
+        .dls-pm .pp-reset{width:100%;font-size:11px;padding:5px;margin-bottom:8px;background:#33445a;color:#fff;border:none;border-radius:5px;cursor:pointer;font-weight:600;}
+        .dls-pm .pp-all{color:#2563eb;cursor:pointer;font-weight:600;text-transform:none;letter-spacing:0;font-size:10px;margin-left:auto;}
+        .dls-pm .pp-row{display:flex;align-items:center;gap:6px;padding:2px 3px;border-radius:4px;cursor:pointer;font-size:11px;}
+        .dls-pm .pp-row:hover{background:#f1f5f9;} .dls-pm .pp-row.off{opacity:.4;}
+        .dls-pm .pp-dot{width:11px;height:11px;border-radius:50%;border:1px solid rgba(0,0,0,.3);flex:none;}
+        .dls-pm .pp-sq{width:11px;height:11px;border-radius:3px;background:#94a3b8;flex:none;}
+        .dls-pm .pp-nm{flex:1;color:#0f172a;} .dls-pm .pp-n{color:#64748b;font-size:10px;}
+        .dls-pm .lp-sec{border-top:1px solid #e2e8f0;}
+        .dls-pm .lp-sec:first-child{border-top:none;}
+        .dls-pm .lp-hd{display:flex;align-items:center;gap:6px;padding:7px 10px;font-weight:700;font-size:12px;cursor:pointer;background:#f1f5f9;color:#1f2a37;-webkit-user-select:none;user-select:none;}
+        .dls-pm .lp-sec:first-child .lp-hd{border-radius:8px 8px 0 0;}
+        .dls-pm .lp-hd .tw{font-size:9px;color:#64748b;display:inline-block;}
+        .dls-pm .lp-sec.coll .lp-hd .tw{transform:rotate(-90deg);}
+        .dls-pm .lp-bd{padding:7px 10px;}
+        .dls-pm .lp-sec.coll .lp-bd{display:none;}
+        .dls-pm .lp-sub{margin:6px 0;}
+        .dls-pm .lp-subhd{display:flex;align-items:center;gap:5px;font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;color:#475569;cursor:pointer;margin-bottom:3px;-webkit-user-select:none;user-select:none;}
+        .dls-pm .lp-subhd .tw{font-size:8px;color:#94a3b8;display:inline-block;}
+        .dls-pm .lp-sub.coll .lp-subhd .tw{transform:rotate(-90deg);}
+        .dls-pm .lp-sub.coll .lp-subbd{display:none;}
+        .dls-pm .zsh{display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px;margin-bottom:7px;font-size:11px;color:#334155;}
+        .dls-pm .zsh .zshl{display:flex;align-items:center;gap:3px;cursor:pointer;}
         .dls-pop b{font-size:13px;} .dls-pop .m{color:#6b7280;margin:2px 0;font-size:11px;}
         .dls-pop a.dls-pop-a{display:inline-block;margin-top:6px;padding:5px 9px;background:#C2410C;color:#fff;border-radius:6px;text-decoration:none;font-weight:600;font-size:11px;}
       </style>
@@ -387,7 +398,7 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
           <span class="sp"></span>
           <select id="base"><option value="aerial">Aerial</option><option value="streets" selected>Streets</option><option value="topo">Topo</option></select>
           <select id="zmode" title="Zoning layer (View / Edit)"><option value="off">Zoning: Off</option><option value="view" selected>Zoning: View</option><option value="edit">Zoning: Edit (tag lots)</option></select>
-          <select id="proj" title="Survey projects layer (WIP)"><option value="off" selected>Projects: Off</option><option value="on">Projects: On</option></select>
+          <select id="proj" title="Survey projects layer (WIP)"><option value="off">Projects: Off</option><option value="on" selected>Projects: On</option></select>
           <button id="fs" class="ghost" title="Full screen (Esc to exit)">Full screen</button>
           <span id="status">Loading&hellip;</span>
         </div>
@@ -413,8 +424,8 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
     $('#proj').onchange = (e:any)=>this.setProjectsMode(e.target.value==='on');
     $('#fs').onclick = ()=>this.toggleFs();
     this.buildMap();
-    this.buildZPanel();
-    this.setZoningMode('view');   // default to Zoning: View with the side panel open
+    this.setZoningMode('view');   // default to Zoning: View
+    this.setProjectsMode(true);   // Projects layer ON by default (one Master Map)
   }
 
   private buildMap(): void {
@@ -664,26 +675,48 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
 
   private featPin(ft:any): string { const src=SOURCES.filter((s)=>s.id===ft.properties.__src)[0]||SOURCES[0]; return pinKey(pick(ft.properties, src.f.pin)); }
   private parcelStyle(ft:any): any {
-    if(this.zoningView){ const z=this.zoneByPin[this.featPin(ft)]; if(z){ if(z.split) return {color:'#6b5300',weight:1,fillColor:'#000',fillOpacity:0.001}; const j=jurById(z.jur)||ZJURS[0]; const c=(j.colors&&j.colors[z.zone])||'#888'; return {color:'#6b5300',weight:1,fillColor:c,fillOpacity:0.55}; } }
+    if(this.zoningView){ const z=this.zoneByPin[this.featPin(ft)]; if(z && this.jurShow[z.jur]!==false){ if(z.split) return {color:'#6b5300',weight:1,fillColor:'#000',fillOpacity:0.001}; const j=jurById(z.jur)||ZJURS[0]; const c=(j.colors&&j.colors[z.zone])||'#888'; return {color:'#6b5300',weight:1,fillColor:c,fillOpacity:0.55}; } }
     return {color:'#ffd24d',weight:1,fillColor:'#000',fillOpacity:0.001};
   }
   private restyleParcels(): void { try{ if(this.parcelLayer) this.parcelLayer.setStyle((ft:any)=>this.parcelStyle(ft)); }catch(e){} }
 
-  private buildZPanel(): void {
+  // ---- ONE combined legend: collapsible Zoning + Projects sections (in #zlegend) ----
+  private buildLegend(): void {
     const el=this.domElement.querySelector('#zlegend') as any; if(!el) return;
-    let h='<b>Zoning</b>';
+    const showZ=this.zoningView, showP=this._projOn;
+    if(!showZ && !showP){ el.style.display='none'; el.innerHTML=''; return; }
+    el.style.display='block';
+    let h='';
+    if(showZ) h+='<div class="lp-sec'+(this._collZ?' coll':'')+'"><div class="lp-hd" data-sec="Z"><span class="tw">&#9662;</span> Zoning</div><div class="lp-bd" id="zoneHost"></div></div>';
+    if(showP) h+='<div class="lp-sec'+(this._collP?' coll':'')+'"><div class="lp-hd" data-sec="P"><span class="tw">&#9662;</span> Projects <span id="pCount" class="pp-ct"></span></div><div class="lp-bd" id="projHost"></div></div>';
+    el.innerHTML=h;
+    const self=this;
+    const hds=el.querySelectorAll('.lp-hd'); for(let i=0;i<hds.length;i++){ hds[i].addEventListener('click',function(){ const s=this.getAttribute('data-sec'); if(s==='Z') self._collZ=!self._collZ; else self._collP=!self._collP; if(this.parentNode) this.parentNode.classList.toggle('coll'); }); }
+    if(showZ) this.buildZPanel();
+    if(showP){ this.buildProjectPanel(); this.renderProjectPins(); }
+  }
+
+  private buildZPanel(): void {
+    const el=this.domElement.querySelector('#zoneHost') as any; if(!el) return;
+    let h='<div class="zsh">Show: ';
+    ZJURS.forEach((j:any)=>{ if(!j.taggable) return; h+='<label class="zshl"><input type="checkbox" data-jsh="'+j.id+'"'+(this.jurShow[j.id]!==false?' checked':'')+'> '+esc(j.name)+'</label>'; });
+    h+='</div>';
     h+='<div class="ztag">Tag lots as: <select id="ztagjur"><option value="auto">Auto-detect</option>';
     ZJURS.forEach((j:any)=>{ if(j.taggable) h+='<option value="'+j.id+'">'+esc(j.name)+'</option>'; });
     h+='</select></div>';
-    ZJURS.forEach((j:any)=>{ if(!j.taggable) return; h+='<div class="zjh">'+j.name+'</div>'; j.zones.forEach((z:string)=>{ h+='<div class="zi"><span class="zsw" style="background:'+j.colors[z]+'"></span>'+z+' &middot; '+j.names[z]+'</div>'; }); });
+    h+='<div class="lp-sub'+(this._collLegend?' coll':'')+'" data-leg="1"><div class="lp-subhd"><span class="tw">&#9662;</span> District legend</div><div class="lp-subbd">';
+    ZJURS.forEach((j:any)=>{ if(!j.taggable) return; h+='<div class="zjh">'+esc(j.name)+'</div>'; j.zones.forEach((z:string)=>{ h+='<div class="zi"><span class="zsw" style="background:'+j.colors[z]+'"></span>'+z+' &middot; '+esc(j.names[z])+'</div>'; }); });
+    h+='</div></div>';
     h+='<div class="zdiv"></div><div class="zjh">Other layers</div>';
     h+='<div class="zrow"><label><input type="checkbox" id="zfema"'+(this._femaOn?' checked':'')+'> FEMA flood (NFHL)</label><span class="zacc exact">live</span><input type="range" min="20" max="100" value="'+(this.femaLayer&&this.femaLayer.options?Math.round(this.femaLayer.options.opacity*100):55)+'" id="zfemaop"></div>';
     h+='<div class="zrow"><label><input type="checkbox" id="zareas"'+(this._areasOn?' checked':'')+'> Drawn areas (historic dist.)</label></div>';
     h+='<button class="zbtn2" id="zdrawarea" style="margin-top:4px">Draw an area&hellip;</button>';
-    h+='<div class="zdisc">Tagged lots are colored by their district. Use "Tag lots as" to lock a jurisdiction for edge lots. FEMA flood is the official 1% layer. Confirm zoning with the city/county.</div>';
+    h+='<div class="zdisc">Tagged lots are colored by district. Use "Show" to hide a jurisdiction; "Tag lots as" to lock a jurisdiction for edge lots. Confirm zoning with the city/county.</div>';
     el.innerHTML=h;
     const self=this;
+    const jsh=el.querySelectorAll('[data-jsh]'); for(let i=0;i<jsh.length;i++){ jsh[i].addEventListener('change',function(){ self.jurShow[this.getAttribute('data-jsh')]=this.checked; self.restyleParcels(); self.buildSplitLayer(); }); }
     const ts=el.querySelector('#ztagjur') as any; if(ts){ ts.value=this.tagJur; ts.addEventListener('change',function(e:any){ self.tagJur=e.target.value; }); }
+    const lh=el.querySelector('[data-leg] .lp-subhd') as any; if(lh) lh.addEventListener('click',function(){ self._collLegend=!self._collLegend; if(this.parentNode) this.parentNode.classList.toggle('coll'); });
     const fm=el.querySelector('#zfema') as any; if(fm) fm.addEventListener('change',function(e:any){ self._femaOn=!!e.target.checked; self.applyFema(); });
     const fo=el.querySelector('#zfemaop') as any; if(fo) fo.addEventListener('input',function(e:any){ if(self.femaLayer) self.femaLayer.setOpacity((+e.target.value)/100); });
     const ar=el.querySelector('#zareas') as any; if(ar) ar.addEventListener('change',function(e:any){ self._areasOn=!!e.target.checked; self.buildAreasLayer(); });
@@ -693,8 +726,7 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
   private setZoningMode(v:string): void {
     this.zoningView = (v==='view'||v==='edit');
     this.zoningEdit = (v==='edit');
-    const zl=this.domElement.querySelector('#zlegend') as any;
-    if(zl) zl.style.display = this.zoningView ? 'block' : 'none';
+    this.buildLegend();
     this.applyOverlays();
     this.restyleParcels();
     this.buildSplitLayer();
@@ -885,12 +917,12 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
   private buildSplitLayer(): void {
     if(!this.splitLayer) return; this.splitLayer.clearLayers();
     if(!this.zoningView) return; const m=this.zoneByPin; const self=this;
-    Object.keys(m).forEach((pin)=>{ const z=m[pin]; if(z&&z.split&&z.pieces){ z.pieces.forEach((p:any)=>{ if(!p.z||!p.r||p.r.length<3) return; const latlngs=p.r.map((c:any)=>[c[1],c[0]]); self.splitLayer.addLayer(L.polygon(latlngs,{color:'#6b5300',weight:1,fillColor:self.jurColor(z.jur,p.z),fillOpacity:0.55,interactive:false,pane:'zsplit'})); }); } });
+    Object.keys(m).forEach((pin)=>{ const z=m[pin]; if(z&&z.split&&z.pieces&&self.jurShow[z.jur]!==false){ z.pieces.forEach((p:any)=>{ if(!p.z||!p.r||p.r.length<3) return; const latlngs=p.r.map((c:any)=>[c[1],c[0]]); self.splitLayer.addLayer(L.polygon(latlngs,{color:'#6b5300',weight:1,fillColor:self.jurColor(z.jur,p.z),fillOpacity:0.55,interactive:false,pane:'zsplit'})); }); } });
   }
 
   // ======================= Projects (Coverage Map) layer =======================
   private loadProjects(): void {
-    if(this._projLoaded){ this.buildProjectPanel(); this.renderProjectPins(); return; }
+    if(this._projLoaded){ this.buildLegend(); return; }
     const url = this.context.pageContext.web.absoluteUrl + "/_api/web/lists(guid'" + this.projectsListGuid + "')/items?$top=500&$select=Id,Title,JobLabel,Lat,Lng,FolderURL,County,ProjectStatus,JobTypeStandard,Property_x0020_Address,FNLTDate";
     this.setStatus('Loading projects…');
     this.spGet(url).then((d:any)=>{
@@ -898,7 +930,7 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
       items.forEach((x:any)=>{ if(x.Lat==null||x.Lng==null) return; const t=(x.Title==null?'':String(x.Title)); const yr=/^\d{6}/.test(t)?('20'+t.substring(0,2)):'(blank)'; const county=(x.County==null?'':String(x.County)).replace(/^\d+\s*-\s*/,'').replace(/,?\s*(TN|KY)\b.*$/i,'').trim(); arr.push({ Id:x.Id, Title:t, JobLabel:x.JobLabel||'', Lat:x.Lat, Lng:x.Lng, FolderURL:x.FolderURL||'', County:county, Status:x.ProjectStatus||'', JobType:x.JobTypeStandard||'', Address:x.Property_x0020_Address||'', Year:yr, Deadline:deadlineBucket(x.ProjectStatus||'', x.FNLTDate) }); });
       this.projects=arr; this._projLoaded=true;
       arr.forEach((j:any)=>{ const s=j.Status||'(no status)'; if(this.pStatusOn[s]===undefined) this.pStatusOn[s]=DEFAULT_STATUS_ON.indexOf(s)>=0; const c=j.County||'(blank)'; if(this.pCountyOn[c]===undefined) this.pCountyOn[c]=true; const ty=j.JobType||'(blank)'; if(this.pTypeOn[ty]===undefined) this.pTypeOn[ty]=true; const y=j.Year||'(blank)'; if(this.pYearOn[y]===undefined) this.pYearOn[y]=true; const dl=j.Deadline||'No date'; if(this.pDeadlineOn[dl]===undefined) this.pDeadlineOn[dl]=true; });
-      this.buildProjectPanel(); this.renderProjectPins(); this.setStatus(this.projects.length+' projects loaded');
+      this.buildLegend(); this.setStatus(this.projects.length+' projects loaded');
     }).catch((e:any)=>{ this.setStatus('Projects: could not load WIP jobs ('+e+')'); });
   }
 
@@ -933,29 +965,22 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
     this._projOn=on;
     const sel=this.domElement.querySelector('#proj') as any; if(sel && sel.value!==(on?'on':'off')) sel.value=on?'on':'off';
     if(on){ this.loadProjects(); }
-    else { if(this.projectLayer) this.projectLayer.clearLayers(); this.buildProjectPanel(); this.setStatus('Projects layer off.'); }
+    else { if(this.projectLayer) this.projectLayer.clearLayers(); this.buildLegend(); this.setStatus('Projects layer off.'); }
   }
 
   private projCounts(keyFn:any): any { const m:any={}; this.projects.forEach((j:any)=>{ const k=keyFn(j); m[k]=(m[k]||0)+1; }); return m; }
 
   private buildProjectPanel(): void {
-    const el=this.domElement.querySelector('#plegend') as any; if(!el) return;
-    if(!this._projOn){ el.style.display='none'; return; }
-    el.style.display='block';
-    let h='<div class="pp-h"><b>Projects</b><span id="pCount" class="pp-ct"></span><span class="pp-x" id="pClose">&times;</span></div><div class="pp-body">';
-    h+='<input id="pSearch" class="pp-search" placeholder="Search client / address / job #" value="'+esc(this.pSearch)+'"/>';
+    const el=this.domElement.querySelector('#projHost') as any; if(!el) return;
+    let h='<input id="pSearch" class="pp-search" placeholder="Search client / address / job #" value="'+esc(this.pSearch)+'"/>';
     h+='<button class="pp-reset" id="pReset">Reset filters</button>';
-    h+='<div class="pp-sec"><div class="pp-lbl">Project status <span class="pp-all" data-pdim="status">all</span></div><div id="pStatus"></div></div>';
-    h+='<div class="pp-sec"><div class="pp-lbl">Deadline <span class="pp-all" data-pdim="deadline">all</span></div><div id="pDeadline"></div></div>';
-    h+='<div class="pp-sec"><div class="pp-lbl">County <span class="pp-all" data-pdim="county">all</span></div><div id="pCounty"></div></div>';
-    h+='<div class="pp-sec"><div class="pp-lbl">Job type <span class="pp-all" data-pdim="type">all</span></div><div id="pType"></div></div>';
-    h+='<div class="pp-sec"><div class="pp-lbl">Year <span class="pp-all" data-pdim="year">all</span></div><div id="pYear"></div></div></div>';
+    const dims=[['status','Project status'],['deadline','Deadline'],['county','County'],['type','Job type'],['year','Year']];
+    for(let i=0;i<dims.length;i++){ const dim=dims[i][0], lbl=dims[i][1]; const cap=dim.charAt(0).toUpperCase()+dim.slice(1); h+='<div class="lp-sub'+(this._dimColl[dim]?' coll':'')+'" data-dimsec="'+dim+'"><div class="lp-subhd"><span class="tw">&#9662;</span> '+lbl+' <span class="pp-all" data-pdim="'+dim+'">all</span></div><div class="lp-subbd"><div id="p'+cap+'"></div></div></div>'; }
     el.innerHTML=h;
     const self=this;
-    const cl=el.querySelector('#pClose') as any; if(cl) cl.onclick=function(){ self.setProjectsMode(false); };
     const si=el.querySelector('#pSearch') as any; if(si) si.oninput=function(){ self.pSearch=(si.value||'').toLowerCase().trim(); self.renderProjectPins(); };
     const rb=el.querySelector('#pReset') as any; if(rb) rb.onclick=function(){ self.projReset(); };
-    const alls=el.querySelectorAll('[data-pdim]'); for(let i=0;i<alls.length;i++){ alls[i].addEventListener('click',function(e:any){ self.projAllOn(e.target.getAttribute('data-pdim')); }); }
+    const subhds=el.querySelectorAll('.lp-subhd'); for(let i=0;i<subhds.length;i++){ subhds[i].addEventListener('click',function(e:any){ const a=(e.target&&e.target.closest)?e.target.closest('[data-pdim]'):null; if(a){ self.projAllOn(a.getAttribute('data-pdim')); return; } const sub=this.parentNode; const dim=sub.getAttribute('data-dimsec'); self._dimColl[dim]=!self._dimColl[dim]; sub.classList.toggle('coll'); }); }
     this.renderProjSections();
   }
 
