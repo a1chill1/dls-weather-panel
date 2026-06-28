@@ -232,6 +232,41 @@ function centroid(r:any){ let x=0,y=0; const n=r.length; for(let i=0;i<n;i++){ x
 function pointInRing(p:any,r:any){ const x=p[0],y=p[1]; let inside=false; for(let i=0,j=r.length-1;i<r.length;j=i++){ const xi=r[i][0],yi=r[i][1],xj=r[j][0],yj=r[j][1]; const hit=((yi>y)!=(yj>y))&&(x<(xj-xi)*(y-yi)/(yj-yi)+xi); if(hit) inside=!inside; } return inside; }
 function ringsToGeoJSON(rings:any){ let outers:any[]=[], holes:any[]=[]; rings.forEach((r:any)=>{ (signedArea(r)>=0?outers:holes).push(r); }); if(outers.length===0){ outers=rings; holes=[]; } const polys=outers.map((o:any)=>[o]); holes.forEach((h:any)=>{ const c=centroid(h); let idx=0; for(let i=0;i<polys.length;i++){ if(pointInRing(c,polys[i][0])){ idx=i; break; } } polys[idx].push(h); }); return polys.length===1?{type:'Polygon',coordinates:polys[0]}:{type:'MultiPolygon',coordinates:polys}; }
 function esriToFeatures(data:any){ if(!data||!data.features) return []; return data.features.map((ft:any)=>{ let geom=null; if(ft.geometry&&ft.geometry.rings){ geom=ringsToGeoJSON(ft.geometry.rings); } return {type:'Feature',properties:ft.attributes||{},geometry:geom}; }).filter((f:any)=>f.geometry); }
+
+// ---- UCDD (Upper Cumberland Development District) official zoning overlay (added 2026-06-27) ----
+var UCDD_BASE='https://services1.arcgis.com/EMZFDxQzNQloLbAf/arcgis/rest/services';
+var UCDD_MINZOOM=14;
+var UCDD_ZONING:any[]=[
+  {key:'smith',label:'Smith County',service:'Smith_Zoning',layer:0,field:'ZONE',bbox:[-86.2205,36.0193,-85.6925,36.4668]},
+  {key:'smithville',label:'Smithville',service:'Smithville_Zoning',layer:0,field:'Zone',bbox:[-85.9373,35.9095,-85.6961,36.0233]},
+  {key:'south_carthage',label:'South Carthage',service:'South_Carthage_Zoning',layer:0,field:'Zone',bbox:[-86.0207,36.2134,-85.9001,36.2701]},
+  {key:'gordonsville',label:'Gordonsville',service:'Zoning_Gordonsville241011',layer:0,field:'ZONE',bbox:[-85.9930,36.1555,-85.8710,36.2115]},
+  {key:'algood',label:'Algood',service:'Zoning_240731',layer:0,field:'Zoning',bbox:[-85.4800,36.1684,-85.4026,36.2297]},
+  {key:'baxter',label:'Baxter',service:'Baxter_Zoning_Update_251118',layer:0,field:'Zone_Curre',bbox:[-85.7435,36.1162,-85.5370,36.1870]},
+  {key:'livingston',label:'Livingston',service:'Livingston_Zoning',layer:0,field:'Zone',bbox:[-85.3853,36.3566,-85.2633,36.4125]},
+  {key:'morrison',label:'Morrison',service:'Morrison_Zoning',layer:0,field:'Zone',bbox:[-86.0024,35.5583,-85.7955,35.6726]},
+  {key:'cannon',label:'Cannon County',service:'Cannon_Zoning_250708',layer:0,field:'Zone',bbox:[-86.7203,35.5340,-85.4377,36.0963]},
+  {key:'monterey',label:'Monterey',service:'Monterey_Zoning_WFL1',layer:3,field:'Zone_Curre',bbox:[-85.2918,36.1273,-85.2308,36.1554]},
+  {key:'spencer',label:'Spencer',service:'Spencer_Zoning_260205',layer:0,field:'ZONE',bbox:[-85.5568,35.6749,-85.3449,35.7994]}
+];
+var UCDD_COLORS:any={
+  smith:{'R-1':[242,223,12],'I-1':[142,4,189],'A-1':[33,222,36],'C-1':[255,0,8],'CRT':[255,136,0],'GRD':[135,72,4],'R-C':[255,0,217],'SCA':[3,255,217]},
+  smithville:{'C-1':[255,0,8],'C-2':[138,6,6],'I-1':[181,9,175],'R-1':[240,208,5],'R-2':[252,146,31]},
+  south_carthage:{'C-1':[255,0,8],'C-2':[94,7,10],'I-1':[120,5,173],'M-2':[11,214,204],'R-1':[247,232,17],'R-2':[255,171,3]},
+  gordonsville:{'A-1':[29,209,13],'C-1':[255,0,4],'C-2':[145,1,4],'I-1':[245,5,245],'I-2':[127,0,255],'R-1':[255,230,0],'R-2':[255,153,0],'M-1':[0,234,255]},
+  algood:{'R-1':[255,235,10],'R-2':[252,173,0],'R-3':[0,182,242],'R-D':[23,130,4],'C-A':[255,17,0],'C-B':[148,4,4],'C-C':[0,240,52],'I-1':[241,7,245],'I-2':[169,9,237]},
+  baxter:{'C-1':[255,166,167],'C-2':[242,0,4],'CBD':[161,26,28],'I-1':[237,43,182],'R-1':[255,242,0],'R-2':[39,245,12],'R-3':[20,158,206],'R-M':[242,126,10]},
+  livingston:{'C-1':[255,0,8],'C-2':[255,154,140],'C-3':[143,0,5],'C-M':[255,145,0],'I-1':[154,47,247],'I-2':[227,39,202],'R-1':[235,231,19],'R-2':[28,230,21]},
+  morrison:{'A-1':[28,230,21],'C-1':[255,0,8],'C-2':[115,31,34],'I-1':[190,15,209],'R-1':[242,227,12],'R-2':[250,160,15]},
+  cannon:{'A-1':[255,238,5],'C-1':[75,199,8],'I-1':[206,29,209],'R-1':[227,5,8]},
+  spencer:{'A-1':[130,204,2],'C-1':[255,0,0],'C-2':[166,3,3],'I-1':[174,0,255],'R-1':[255,234,0],'R-2':[245,136,2]},
+  monterey:{}
+};
+var UCDD_FALLBACK=['#e6194B','#3cb44b','#ffe119','#4363d8','#f58231','#911eb4','#42d4f4','#f032e6','#bfef45','#469990'];
+function ucddRgbaArr(a:any,al:number){ return 'rgba('+a[0]+','+a[1]+','+a[2]+','+al+')'; }
+function ucddColor(key:string,zone:any){ var z=(zone==null?'':(''+zone)).toUpperCase(); var cm=UCDD_COLORS[key]||{}; if(cm[z]) return ucddRgbaArr(cm[z],0.65); var h=0; for(var i=0;i<z.length;i++){ h=(h*31+z.charCodeAt(i))>>>0; } return UCDD_FALLBACK[h%UCDD_FALLBACK.length]; }
+function ucddHit(bb:any,vw:any){ return !(bb[0]>vw[2]||bb[2]<vw[0]||bb[1]>vw[3]||bb[3]<vw[1]); }
+
 function normalize(attrs:any, src:any){ const n:any={src:src}; n.pin=pick(attrs,src.f.pin); n.owner=pick(attrs,src.f.owner); n.owner2=pick(attrs,src.f.owner2); n.address=pick(attrs,src.f.address); n.mail=pick(attrs,src.f.mail); n.subdiv=pick(attrs,src.f.subdiv); n.lot=pick(attrs,src.f.lot); n.acres=pick(attrs,src.f.acres); n.zoning=pick(attrs,src.f.zoning); n.parcelno=pick(attrs,src.f.parcelno); n.assr=pick(attrs,src.f.assr); n.tpad=pick(attrs,src.f.tpad); const gm=(n.tpad.match(/gislink=([^&]+)/)||[])[1]; n.gislink=gm?decodeURIComponent(gm):pick(attrs,src.f.gislinkf); n.deedBook=pick(attrs,src.f.deedBook); n.deedPage=pick(attrs,src.f.deedPage); n.legalref=pick(attrs,src.f.legalref); n.deedref=pick(attrs,src.f.deedref); n.state=src.state; n.county=src.county||pick(attrs,[src.countyField]); if(n.county) n.county=n.county.toUpperCase().replace(/ COUNTY$/,'').trim(); return n; }
 function parseBookPage(n:any){ if(n.deedBook&&n.deedPage&&/\d/.test(n.deedBook)&&/\d/.test(n.deedPage)) return {book:n.deedBook.replace(/[^0-9A-Za-z]/g,''),page:n.deedPage.replace(/[^0-9A-Za-z]/g,'')}; const ref=n.legalref||''; const m=ref.match(/^\s*([0-9A-Za-z]+)\s*[-\/]\s*([0-9A-Za-z]+)\s*$/); if(m) return {book:m[1],page:m[2]}; return null; }
 function tsNameUrl(owner:string){ const name=(owner||'').split(',')[0].trim(); return TS_BASE+'nameSearch.php?'+qs({nameType:'2',searchType:'PA',indexType:'BOTH',p1:name,p2:'',expandAll:'on',startDate:'',endDate:'',itype:'0',executeSearch:'Execute Search'}); }
@@ -263,6 +298,7 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
   private selFeat:any=null; private selN:any=null; private selLayer:any=null; private labelLayer:any=null; private workedGeomLayer:any=null; private _workGeomLoaded=false; private _folderCache:any={}; private _printMap:any=null;
   private splitState:any=null; private splitLayer:any=null; private splitTmp:any[]=[]; private splitMarkers:any[]=[]; private _splitClick:any=null; private _splitDrawPopup:any=null;
   private femaLayer:any=null; private _femaOn=false; private areasLayer:any=null; private _areasRenderer:any=null; private areas:any[]=[]; private _areasOn=false;
+  private ucddMode:string='off'; private ucddLayer:any=null; private _ucddSeq=0; private _ucddCount=0; private _collU=false;
   private areaState:any=null; private areaMarkers:any[]=[]; private areaLine:any=null; private _areaClick:any=null;
   private projects:any[]=[]; private projectLayer:any=null; private _projRenderer:any=null; private _projOn=false; private _projLoaded=false;
   private pStatusOn:any={}; private pCountyOn:any={}; private pTypeOn:any={}; private pYearOn:any={}; private pDeadlineOn:any={}; private pSearch='';
@@ -331,6 +367,7 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
         .leaflet-popup-content{margin:10px 12px;max-width:280px;}
         .dls-pm #zmode{background:#33445a;color:#fff;}
         .dls-pm #wmode{background:#2a4a33;color:#fff;}
+        .dls-pm #umode{background:#3a2a4a;color:#fff;}
         .wk-row{margin:3px 0}
         .wk-row select,.wk-row input{width:100%;box-sizing:border-box;padding:4px;border:1px solid #ccc;border-radius:4px;font:12px sans-serif}
         .wk-or{font-size:11px;color:#888;margin:6px 0 2px;text-align:center}
@@ -436,6 +473,7 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
           <select id="zmode" title="Zoning layer (View / Edit)"><option value="off" selected>Zoning: Off</option><option value="view">Zoning: View</option><option value="edit">Zoning: Edit (tag lots)</option></select>
           <select id="proj" title="Survey projects layer (WIP)"><option value="off">Projects: Off</option><option value="on" selected>Projects: On</option></select>
           <select id="wmode" title="Work history layer (surveyed parcels)"><option value="off" selected>Work history: Off</option><option value="view">Work history: View</option><option value="edit">Work history: Edit (mark surveyed)</option></select>
+          <select id="umode" title="UCDD official zoning (Upper Cumberland Development District)"><option value="off" selected>UCDD Zoning: Off</option><option value="on">UCDD Zoning: On</option></select>
           <button id="fs" class="ghost" title="Full screen (Esc to exit)">Full screen</button>
           <span id="status">Loading&hellip;</span>
         </div>
@@ -460,6 +498,7 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
     $('#zmode').onchange = (e:any)=>this.setZoningMode(e.target.value);
     $('#proj').onchange = (e:any)=>this.setProjectsMode(e.target.value==='on');
     $('#wmode').onchange = (e:any)=>this.setWorkMode(e.target.value);
+    $('#umode').onchange = (e:any)=>this.setUcddMode(e.target.value);
     $('#fs').onclick = ()=>this.toggleFs();
     this.buildMap();
     this.setZoningMode('off');   // default Zoning OFF (Projects on, Work history off)
@@ -491,6 +530,8 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
     this.map.createPane('worked'); this.map.getPane('worked').style.zIndex='470';
     this.map.createPane('sel'); this.map.getPane('sel').style.zIndex='480'; this.map.getPane('sel').style.pointerEvents='none';
     this.map.createPane('labels'); this.map.getPane('labels').style.zIndex='550'; this.map.getPane('labels').style.pointerEvents='none';
+    this.map.createPane('ucdd'); this.map.getPane('ucdd').style.zIndex='360'; this.map.getPane('ucdd').style.pointerEvents='none';
+    this.ucddLayer=L.layerGroup([],{pane:'ucdd'});
     this.parcelLayer = L.geoJSON(null,{ style:(ft:any)=>this.parcelStyle(ft), onEachFeature:(ft:any,layer:any)=>this.onFeat(ft,layer) }).addTo(this.map);
     this.selLayer = L.geoJSON(null,{ pane:'sel', style:{color:'#1565ff',weight:3,fillColor:'#4a90e2',fillOpacity:0.22} }).addTo(this.map);
     this.labelLayer = L.layerGroup().addTo(this.map);
@@ -531,6 +572,7 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
 
   // Only reload if the view left the already-loaded (padded) area — keeps popups open and avoids flicker on small pans / popup auto-pan.
   private maybeLoad(): void {
+    if(this.ucddMode==='on') this.loadUcdd();
     const z=this.map.getZoom();
     if(z>=MINZOOM && this.loadedBounds && this.loadedZoom===z && this.loadedBounds.contains(this.map.getBounds())) return;
     this.loadParcels();
@@ -983,19 +1025,21 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
   // ---- ONE combined legend: collapsible Zoning + Projects sections (in #zlegend) ----
   private buildLegend(): void {
     const el=this.domElement.querySelector('#zlegend') as any; if(!el) return;
-    const showZ=this.zoningView, showP=this._projOn, showW=this.workView;
-    if(!showZ && !showP && !showW){ el.style.display='none'; el.innerHTML=''; return; }
+    const showZ=this.zoningView, showP=this._projOn, showW=this.workView; const showU=(this.ucddMode==='on');
+    if(!showZ && !showP && !showW && !showU){ el.style.display='none'; el.innerHTML=''; return; }
     el.style.display='block';
     let h='';
     if(showZ) h+='<div class="lp-sec'+(this._collZ?' coll':'')+'"><div class="lp-hd" data-sec="Z"><span class="tw">&#9662;</span> Zoning</div><div class="lp-bd" id="zoneHost"></div></div>';
     if(showP) h+='<div class="lp-sec'+(this._collP?' coll':'')+'"><div class="lp-hd" data-sec="P"><span class="tw">&#9662;</span> Projects <span id="pCount" class="pp-ct"></span></div><div class="lp-bd" id="projHost"></div></div>';
     if(showW) h+='<div class="lp-sec'+(this._collW?' coll':'')+'"><div class="lp-hd" data-sec="W"><span class="tw">&#9662;</span> Work history <span id="wCount" class="pp-ct"></span></div><div class="lp-bd" id="workHost"></div></div>';
+    if(showU) h+='<div class="lp-sec'+(this._collU?' coll':'')+'"><div class="lp-hd" data-sec="U"><span class="tw">&#9662;</span> UCDD Zoning <span id="uCount" class="pp-ct"></span></div><div class="lp-bd" id="ucddHost"></div></div>';
     el.innerHTML=h;
     const self=this;
-    const hds=el.querySelectorAll('.lp-hd'); for(let i=0;i<hds.length;i++){ hds[i].addEventListener('click',function(){ const s=this.getAttribute('data-sec'); if(s==='Z') self._collZ=!self._collZ; else if(s==='P') self._collP=!self._collP; else self._collW=!self._collW; if(this.parentNode) this.parentNode.classList.toggle('coll'); }); }
+    const hds=el.querySelectorAll('.lp-hd'); for(let i=0;i<hds.length;i++){ hds[i].addEventListener('click',function(){ const s=this.getAttribute('data-sec'); if(s==='Z') self._collZ=!self._collZ; else if(s==='P') self._collP=!self._collP; else if(s==='W') self._collW=!self._collW; else self._collU=!self._collU; if(this.parentNode) this.parentNode.classList.toggle('coll'); }); }
     if(showZ) this.buildZPanel();
     if(showP){ this.buildProjectPanel(); this.renderProjectPins(); }
     if(showW){ this.buildWorkPanel(); }
+    if(showU){ this.buildUPanel(); }
   }
 
   private buildZPanel(): void {
@@ -1023,6 +1067,64 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
     const fo=el.querySelector('#zfemaop') as any; if(fo) fo.addEventListener('input',function(e:any){ if(self.femaLayer) self.femaLayer.setOpacity((+e.target.value)/100); });
     const ar=el.querySelector('#zareas') as any; if(ar) ar.addEventListener('change',function(e:any){ self._areasOn=!!e.target.checked; self.buildAreasLayer(); });
     const da=el.querySelector('#zdrawarea') as any; if(da) da.addEventListener('click',function(){ self.startAreaDraw(); });
+  }
+
+  private setUcddMode(v:string): void {
+    this.ucddMode = (v==='on') ? 'on' : 'off';
+    if(this.ucddMode==='on'){
+      if(this.ucddLayer && !this.map.hasLayer(this.ucddLayer)) this.ucddLayer.addTo(this.map);
+      this.loadUcdd();
+      this.setStatus('UCDD official zoning ON - zoom into a covered community (Smith, Smithville, Cannon, etc.).');
+    } else {
+      if(this.ucddLayer){ this.ucddLayer.clearLayers(); if(this.map.hasLayer(this.ucddLayer)) this.map.removeLayer(this.ucddLayer); }
+      this._ucddCount=0;
+      this.setStatus('UCDD zoning off.');
+    }
+    this.buildLegend();
+  }
+
+  private loadUcdd(): void {
+    if(!this.ucddLayer) return;
+    if(this.map.getZoom() < UCDD_MINZOOM){ this.ucddLayer.clearLayers(); this._ucddCount=0; this.buildLegend(); return; }
+    var b=this.map.getBounds(); var vw=[b.getWest(),b.getSouth(),b.getEast(),b.getNorth()]; var env=vw.join(',');
+    var seq= ++this._ucddSeq; var self=this;
+    this.ucddLayer.clearLayers(); this._ucddCount=0;
+    for(var i=0;i<UCDD_ZONING.length;i++){
+      var c0=UCDD_ZONING[i];
+      if(!ucddHit(c0.bbox,vw)) continue;
+      (function(c:any){
+        var url=UCDD_BASE+'/'+c.service+'/FeatureServer/'+c.layer+'/query?'+qs({where:'1=1',geometry:env,geometryType:'esriGeometryEnvelope',inSR:4326,spatialRel:'esriSpatialRelIntersects',outFields:c.field,returnGeometry:true,outSR:4326,resultRecordCount:2000,f:'json'});
+        self.arcgisFetch(url).then(function(d:any){
+          if(self._ucddSeq!==seq) return;
+          if(!d||d.error) return;
+          var feats=esriToFeatures(d);
+          for(var k=0;k<feats.length;k++){
+            var zone=feats[k].properties[c.field];
+            var col=ucddColor(c.key,zone);
+            var gj=L.geoJSON(feats[k],{pane:'ucdd',style:{color:'#333',weight:0.5,fillColor:col,fillOpacity:0.6}});
+            self.ucddLayer.addLayer(gj);
+          }
+          self._ucddCount+=feats.length;
+          self.buildLegend();
+        }).catch(function(){});
+      })(c0);
+    }
+  }
+
+  private buildUPanel(): void {
+    var el:any=this.domElement.querySelector('#ucddHost'); if(!el) return;
+    var b=this.map.getBounds(); var vw=[b.getWest(),b.getSouth(),b.getEast(),b.getNorth()];
+    var h=''; var any=false;
+    for(var i=0;i<UCDD_ZONING.length;i++){
+      var c=UCDD_ZONING[i]; if(!ucddHit(c.bbox,vw)) continue; any=true;
+      h+='<div class="zjh">'+esc(c.label)+'</div>';
+      var cm=UCDD_COLORS[c.key]||{};
+      for(var z in cm){ if(!cm.hasOwnProperty(z)) continue; h+='<div class="zi"><span class="zsw" style="background:'+ucddRgbaArr(cm[z],0.7)+'"></span>'+esc(z)+'</div>'; }
+    }
+    if(!any){ h='<div class="zdisc">Pan/zoom to a covered community: Smith, Smithville, South Carthage, Gordonsville, Algood, Baxter, Livingston, Morrison, Cannon, Monterey, Spencer.</div>'; }
+    else { h+='<div class="zdisc">Official UCDD zoning, live, lot-by-lot. Reference only - confirm with the city/county.</div>'; }
+    el.innerHTML=h;
+    var uc:any=this.domElement.querySelector('#uCount'); if(uc) uc.textContent=this._ucddCount?('· '+this._ucddCount):'';
   }
 
   private setZoningMode(v:string): void {
