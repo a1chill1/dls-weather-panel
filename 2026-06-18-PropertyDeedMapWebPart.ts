@@ -1593,9 +1593,13 @@ for(var k=0;k<UCDD_ZONING.length;k++){ var uu=UCDD_ZONING[k]; var ufe=this._ucdd
       if(!self.iqIsTn(q.county)) continue;   // statewide service covers TN 86 counties (metros/KY skipped)
       const key=q.county.toUpperCase(); if(!byCounty[key]) byCounty[key]={county:q.county,items:[]}; byCounty[key].items.push({q:q,map:map,p5:p5});
     }
-    const keys=Object.keys(byCounty); let pending=keys.length;
+    // Chunk each county's inquiries so the OR'd PARCELID query URL stays under the ArcGIS GET limit
+    // (Macon reached 38 inquiries -> a single query exceeded the URL limit, server returned HTML, the whole county failed to resolve).
+    const groups:any[]=[]; const keys=Object.keys(byCounty); const CH=15;
+    for(let ci=0;ci<keys.length;ci++){ const g=byCounty[keys[ci]]; for(let s=0;s<g.items.length;s+=CH){ groups.push({county:g.county,items:g.items.slice(s,s+CH)}); } }
+    let pending=groups.length;
     if(pending===0){ self.finishInquiryResolve(); return; }
-    for(let k=0;k<keys.length;k++){ this.resolveCountyParcels(byCounty[keys[k]], function(){ pending--; if(pending<=0) self.finishInquiryResolve(); }); }
+    for(let k=0;k<groups.length;k++){ this.resolveCountyParcels(groups[k], function(){ pending--; if(pending<=0) self.finishInquiryResolve(); }); }
   }
 
   private resolveCountyParcels(grp:any, done:any): void {
