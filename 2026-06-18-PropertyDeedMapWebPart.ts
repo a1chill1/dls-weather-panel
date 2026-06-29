@@ -248,7 +248,15 @@ var UCDD_ZONING:any[]=[
   {key:'morrison',label:'Morrison',service:'Morrison_Zoning',layer:0,field:'Zone',bbox:[-86.0024,35.5583,-85.7955,35.6726]},
   {key:'cannon',label:'Cannon County',service:'Cannon_Zoning_250708',layer:0,field:'Zone',bbox:[-86.7203,35.5340,-85.4377,36.0963]},
   {key:'monterey',label:'Monterey',service:'Monterey_Zoning_WFL1',layer:3,field:'Zone_Curre',bbox:[-85.2918,36.1273,-85.2308,36.1554]},
-  {key:'spencer',label:'Spencer',service:'Spencer_Zoning_260205',layer:0,field:'ZONE',bbox:[-85.5568,35.6749,-85.3449,35.7994]}
+  {key:'spencer',label:'Spencer',service:'Spencer_Zoning_260205',layer:0,field:'ZONE',bbox:[-85.5568,35.6749,-85.3449,35.7994]},
+  {key:'sumner_co',label:'Sumner County (unincorp.)',group:'sumner',url:'https://services5.arcgis.com/I2fcoygeHRmx0WzS/arcgis/rest/services/PSALayers/FeatureServer/20',field:'ZONING',bbox:[-86.76,36.24,-86.20,36.66]},
+  {key:'gallatin',label:'Gallatin',group:'sumner',url:'https://arcweb.gallatin-tn.gov/arcgis/rest/services/Features/Zoning/FeatureServer/0',field:'ZONING',bbox:[-86.58,36.30,-86.40,36.46]},
+  {key:'hendersonville',label:'Hendersonville',group:'sumner',url:'https://gis.hvilletn.org/gisapi/rest/services/HvilleTN_Zoning_UPDATED/MapServer/3',field:'ZONECODE',bbox:[-86.70,36.26,-86.54,36.40]},
+  {key:'whitehouse',label:'White House',group:'sumner',url:'https://gis.cityofwhitehouse.com/arcgis/rest/services/WhiteHouseTN_Zoning/FeatureServer/3',field:'ZONECLASS',bbox:[-86.78,36.43,-86.60,36.53]},
+  {key:'portland',label:'Portland',group:'sumner',url:'https://services3.arcgis.com/pXGyp7DHTIE4RXOJ/arcgis/rest/services/Zoning_Portland/FeatureServer/0',field:'ZQ45T',bbox:[-86.55,36.55,-86.47,36.61]},
+  {key:'millersville',label:'Millersville',group:'sumner',url:'https://services.arcgis.com/jcrrmnzMsBOEAFJp/arcgis/rest/services/Millersville_Zoning_view/FeatureServer/5',field:'ZONE_2021',bbox:[-86.87,36.34,-86.68,36.47]},
+  {key:'goodlettsville',label:'Goodlettsville',group:'sumner',url:'https://services8.arcgis.com/qSbT66zM7qttH0fv/arcgis/rest/services/ZONINGARGISMAP/FeatureServer/2',field:'ZONECLASS',bbox:[-86.75,36.27,-86.65,36.39]},
+  {key:'westmoreland',label:'Westmoreland',group:'sumner',url:'https://services3.arcgis.com/pXGyp7DHTIE4RXOJ/arcgis/rest/services/Westmoreland_Zoning/FeatureServer/0',field:'Zone_Curre',bbox:[-86.31,36.53,-86.21,36.61]}
 ];
 var UCDD_COLORS:any={
   smith:{'R-1':[242,223,12],'I-1':[142,4,189],'A-1':[33,222,36],'C-1':[255,0,8],'CRT':[255,136,0],'GRD':[135,72,4],'R-C':[255,0,217],'SCA':[3,255,217]},
@@ -261,7 +269,15 @@ var UCDD_COLORS:any={
   morrison:{'A-1':[28,230,21],'C-1':[255,0,8],'C-2':[115,31,34],'I-1':[190,15,209],'R-1':[242,227,12],'R-2':[250,160,15]},
   cannon:{'A-1':[255,238,5],'C-1':[75,199,8],'I-1':[206,29,209],'R-1':[227,5,8]},
   spencer:{'A-1':[130,204,2],'C-1':[255,0,0],'C-2':[166,3,3],'I-1':[174,0,255],'R-1':[255,234,0],'R-2':[245,136,2]},
-  monterey:{'C-1':[255,190,190],'C-2':[255,0,0],'I-1':[169,0,230],'R-1':[255,255,0],'R-2':[230,152,0],'R-R':[163,255,115]}
+  monterey:{'C-1':[255,190,190],'C-2':[255,0,0],'I-1':[169,0,230],'R-1':[255,255,0],'R-2':[230,152,0],'R-R':[163,255,115]},
+  sumner_co:{'AGRICULTURAL RESERVE (AR)':[38,115,0],'COMMERCIAL GENERAL (CG)':[255,190,190],'COMMERCIAL NEIGHBORHOOD (CN)':[215,158,158],'COMMERCIAL SERVICES (CS)':[255,211,127],'HEAVY INDUSTRIAL (HI)':[57,163,49],'INSTITUTIONAL (IN)':[0,169,230],'LIGHT INDUSTRIAL (LI)':[169,0,230],'PLANNED UNIT DEVELOPMENT (PUD)':[115,255,223],'RURAL RESIDENTIAL (RR)':[215,158,158],'SUBURBAN RESIDENTIAL (SR)':[255,255,0],'RURAL PRESERVATION (RP)':[180,215,158]},
+  gallatin:{'A':[85,255,0],'CC':[168,0,0],'CG':[230,0,0],'CG(PUD)':[255,0,197],'CS':[255,190,232],'CS(PUD)':[245,122,122],'CSL':[223,115,255],'COMMERCIAL SERVICES (CS)':[255,211,127],'GO':[0,37,167],'IG':[197,0,255],'IR':[132,0,168],'INSTITUTIONAL (IN)':[0,169,230],'LIGHT INDUSTRIAL (LI)':[169,0,230],'MPO':[255,0,0],'MRO':[230,76,0],'MRO(PUD)':[255,122,0],'MU':[74,164,254],'MUG':[0,255,197],'OR':[255,190,190],'PBP':[255,0,77],'PGC':[214,157,188],'PNC':[230,0,169],'PLANNED UNIT DEVELOPMENT (PUD)':[115,255,223],'R-06':[205,137,102],'R-06(PRD)':[255,255,190],'R-06(PUD)':[215,176,158],'R-08':[245,162,122],'R-08(PRD)':[255,167,127],'R-10':[230,127,0],'R-10(PRD)':[245,202,122],'R-15':[255,235,190],'R-15(PRD)':[255,170,0],'R-15(PUD)':[255,211,127],'R-20':[255,255,0],'R-20(PRD)':[255,235,175],'R-20(PUD)':[230,230,0],'R-40':[255,255,115],'RURAL RESIDENTIAL (RR)':[180,215,158],'SP':[159,164,238]},
+  hendersonville:{'DN':[115,0,0],'ER':[193,227,91],'GC':[230,0,0],'HC':[168,0,230],'I':[0,115,255],'MFR':[138,101,59],'MXC':[255,85,0],'MXR':[204,168,102],'NC':[255,166,128],'O':[255,117,225],'RR':[165,255,117],'SR-1':[230,230,0],'SR-2':[255,170,0],'SR-3':[20,158,206]},
+  whitehouse:{'R-10':[233,255,190],'R-15':[255,235,175],'R-20':[137,205,102],'C-1':[255,190,190],'R-TC':[255,255,0],'C-1R':[215,176,158],'C-2':[255,0,0],'C-4':[168,56,0],'C-5':[115,0,0],'C-6':[255,170,0],'I-1':[190,232,255],'I-2':[115,178,255],'NCRPUD':[205,170,102],'SRPUD':[68,137,112]},
+  portland:{'GCS':[255,190,190],'R15':[168,168,0],'RS20':[85,255,0],'R7.5':[255,255,190],'R10':[255,255,115],'RS40':[112,168,0],'RM1':[211,255,190],'CBD':[255,0,0],'R40':[255,255,255],'IR':[115,178,255],'OPS':[255,115,223],'IG':[190,210,255],'HCD':[223,115,255],'RS15':[163,255,115],'RMHP':[233,255,190],'NSD':[255,190,232],'PUD':[190,255,232],'RM1 - PUD':[133,133,133]},
+  millersville:{'NC':[253,127,111],'O':[255,0,197],'MXC':[255,170,0],'GC':[230,0,0],'HC':[169,0,230],'RR':[40,184,67],'ER':[162,255,31],'SR-1':[255,255,0],'SR-2':[230,152,0],'THR':[66,99,0],'MXR':[183,129,74],'MFR':[115,38,0],'I':[0,112,255],'PD':[153,153,153],'H':[26,26,26]},
+  goodlettsville:{'A':[252,225,207],'CC':[215,252,199],'CG':[179,193,252],'CPUD':[215,252,252],'CPUDL':[252,207,192],'CS':[194,179,252],'CSL':[182,252,232],'GOPUD':[179,252,187],'HDRPUD':[252,227,184],'IC':[252,182,218],'IG':[210,252,220],'IR':[182,243,252],'LDRPUD':[252,188,182],'MDRPUD':[192,252,204],'NMOVRLY':[251,252,179],'OP':[219,252,182],'R10':[252,179,196],'R15':[184,210,252],'R25':[252,251,212],'R40':[236,202,252],'R7':[222,212,252],'RC1PUD':[215,234,252],'RLSPUD':[252,215,230],'ROPUD':[251,182,252]},
+  westmoreland:{'R1':[0,38,115],'R2':[252,146,31],'C1':[237,81,81],'C2':[20,158,206],'I1':[56,168,0]}
 };
 var UCDD_FALLBACK=['#e6194B','#3cb44b','#ffe119','#4363d8','#f58231','#911eb4','#42d4f4','#f032e6','#bfef45','#469990'];
 function ucddRgbaArr(a:any,al:number){ return 'rgba('+a[0]+','+a[1]+','+a[2]+','+al+')'; }
@@ -281,7 +297,15 @@ var UCDD_NAMES:any={
   morrison:{'A-1':'Agriculture District','R-1':'Low Density Residential District','R-2':'High Density Residential District','C-1':'Central Commercial District','C-2':'General Commercial District','I-1':'Light Industrial District'},
   cannon:{'A-1':'Agricultural District','R-1':'Single-Family Low Density Residential District','C-1':'Commercial District','I-1':'General Industrial District'},
   monterey:{'C-1':'Limited Commercial District','C-2':'General Commercial District','I-1':'Light Industrial District','R-1':'Low Density Residential District','R-2':'High Density Residential District','R-R':'Rural Residential District'},
-  spencer:{}
+  spencer:{},
+  sumner_co:{},
+  gallatin:{},
+  hendersonville:{},
+  whitehouse:{},
+  portland:{},
+  millersville:{'NC':'Neighborhood Commercial','O':'Office','MXC':'Mixed Commercial','GC':'General Commercial','HC':'Heavy Commercial','RR':'Rural Residential','ER':'Estate Residential','SR-1':'Suburban Residential 1','SR-2':'Suburban Residential 2','THR':'Townhome Residential','MXR':'Mixed Residential','MFR':'Multi-Family Residential','I':'Industrial','PD':'Planned Development','H':'Historic and Landmarks'},
+  goodlettsville:{'A':'Agricultural','CC':'Core Commercial','CG':'Commercial General','CS':'Commercial Service','CSL':'Commercial Service Limited','OP':'Office Professional','IC':'Industrial Commercial','IG':'Industrial General','IR':'Industrial Restrictive','R7':'High Density Residential','R10':'Medium Density Residential','R15':'Medium Density Residential','R25':'Low Density Residential','R40':'Low Density Residential','CPUD':'Commercial PUD','CPUDL':'Commercial PUD Limited','GOPUD':'General Office PUD','HDRPUD':'High Density Residential PUD','LDRPUD':'Low Density Residential PUD','MDRPUD':'Medium Density Residential PUD','NMOVRLY':'North Main Street Overlay','ROPUD':'Restricted Office PUD','RC1PUD':'Regional Center PUD (High Intensity)','RLSPUD':'Residential Limited Scale PUD'},
+  westmoreland:{}
 };
 function ucddName(key:string,code:any){ var z=(code==null?'':(''+code)).toUpperCase(); var m=UCDD_NAMES[key]||{}; return m[z]||''; }
 // point-in-polygon: is [lng,lat] inside a GeoJSON feature (Polygon/MultiPolygon, honoring holes)? Reuses pointInRing.
@@ -694,7 +718,7 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
     if(n.subdiv) row('Subdiv', n.subdiv+(n.lot?'  Lot '+n.lot:''));
     if(n.zoning) row('Zoning', n.zoning);
     const zt=this.zoneByPin[pinKey(n.pin)]; if(zt){ const zj=jurById(zt.jur)||ZJURS[0]; if(zt.split&&zt.pieces){ row('Zone ('+(zt.jur||'')+')', zt.pieces.map((p:any)=>p.z||'blank').join(' / ')+' (split lot)'); } else { row('Zone ('+(zt.jur||'')+')', zt.zone+' — '+((zj.names&&zj.names[zt.zone])||'')+(zt.flood?' · Floodplain':'')); } }
-    if(n.ucdd && n.ucdd.length){ for(let ui=0;ui<n.ucdd.length;ui++){ const uz=n.ucdd[ui]; row('Zone ('+uz.label+')', uz.zone+(uz.name?' — '+uz.name:'')+' · UCDD official'); } }
+    if(n.ucdd && n.ucdd.length){ for(let ui=0;ui<n.ucdd.length;ui++){ const uz=n.ucdd[ui]; row('Zone ('+uz.label+')', uz.zone+(uz.name?' — '+uz.name:'')+' · official zoning'); } }
     if(this.workView){ const wj=this.workedByPin[pinKey(n.pin)]; if(wj&&wj.length){ let wb=''; for(let wi=0;wi<wj.length;wi++){ const w=wj[wi]; wb+='<div class="dls-wk"><b>'+esc(w.job||'')+'</b>'+(w.name?' '+esc(w.name):'')+(w.job?' <a class="dls-pop-a" href="#" data-act="wfolder" data-arg="'+esc(w.job)+'">Open folder &#8599;</a>':'')+'</div>'; } rows+='<tr><td class="k">Surveyed</td><td>'+wb+'</td></tr>'; } }
     if(n.deedBook||n.deedPage) row('Deed','Bk '+n.deedBook+' Pg '+n.deedPage);
     else if(n.legalref) row('Deed ref', n.legalref);
@@ -1157,9 +1181,9 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
     let h='<div class="zsh">Show: ';
     ZJURS.forEach((j:any)=>{ if(!j.taggable) return; h+='<label class="zshl"><input type="checkbox" data-jsh="'+j.id+'"'+(this.jurShow[j.id]!==false?' checked':'')+'> '+esc(j.name)+'</label>'; });
     h+='</div>';
-    h+='<div class="lp-sub'+(this._collUcdd?' coll':'')+'" data-ucddsub="1"><div class="lp-subhd"><span class="tw">&#9662;</span> UCDD official zoning'+(this._ucddCount?' <span class="pp-ct">'+this._ucddCount+' lots</span>':'')+'</div><div class="lp-subbd"><div class="zsh">';
-    for(var i=0;i<UCDD_ZONING.length;i++){ var u=UCDD_ZONING[i]; h+='<label class="zshl"><input type="checkbox" data-ush="'+u.key+'"'+(this.jurShow[u.key]===true?' checked':'')+'> '+esc(u.label)+'</label>'; }
-    h+='</div><div class="zdisc">Official Upper Cumberland zoning, lot-by-lot. Turn on a community, then zoom in (&#8805; '+UCDD_MINZOOM+').</div></div></div>';
+    h+='<div class="lp-sub'+(this._collUcdd?' coll':'')+'" data-ucddsub="1"><div class="lp-subhd"><span class="tw">&#9662;</span> Official zoning (live)'+(this._ucddCount?' <span class="pp-ct">'+this._ucddCount+' lots</span>':'')+'</div><div class="lp-subbd">';
+    h+='<div class="zjh" style="margin-top:3px">Sumner County</div><div class="zsh">'; for(var zsi=0;zsi<UCDD_ZONING.length;zsi++){ var zsu=UCDD_ZONING[zsi]; if(zsu.group!=='sumner') continue; h+='<label class="zshl"><input type="checkbox" data-ush="'+zsu.key+'"'+(this.jurShow[zsu.key]===true?' checked':'')+'> '+esc(zsu.label)+'</label>'; } h+='</div><div class="zjh">Upper Cumberland (UCDD)</div><div class="zsh">'; for(var zui=0;zui<UCDD_ZONING.length;zui++){ var zuu=UCDD_ZONING[zui]; if(zuu.group==='sumner') continue; h+='<label class="zshl"><input type="checkbox" data-ush="'+zuu.key+'"'+(this.jurShow[zuu.key]===true?' checked':'')+'> '+esc(zuu.label)+'</label>'; }
+    h+='</div><div class="zdisc">Official county/city zoning, lot-by-lot. Turn on a jurisdiction, then zoom in (&#8805; '+UCDD_MINZOOM+').</div></div></div>';
     h+='<div class="ztag">Tag lots as: <select id="ztagjur"><option value="auto">Auto-detect</option>';
     ZJURS.forEach((j:any)=>{ if(j.taggable) h+='<option value="'+j.id+'">'+esc(j.name)+'</option>'; });
     h+='</select></div>';
@@ -1201,7 +1225,7 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
     var seq= ++this._ucddSeq; var cache:any={}; this._ucddCache=cache; this.ucddLayer.clearLayers(); this._ucddCount=0;
     for(var k2=0;k2<on.length;k2++){
       (function(c:any){
-        var url=UCDD_BASE+'/'+c.service+'/FeatureServer/'+c.layer+'/query?'+qs({where:'1=1',geometry:env,geometryType:'esriGeometryEnvelope',inSR:4326,spatialRel:'esriSpatialRelIntersects',outFields:c.field,returnGeometry:true,outSR:4326,maxAllowableOffset:off,geometryPrecision:6,resultRecordCount:2000,f:'json'});
+        var url=(c.url?c.url:(UCDD_BASE+'/'+c.service+'/FeatureServer/'+c.layer))+'/query?'+qs({where:'1=1',geometry:env,geometryType:'esriGeometryEnvelope',inSR:4326,spatialRel:'esriSpatialRelIntersects',outFields:c.field,returnGeometry:true,outSR:4326,maxAllowableOffset:off,geometryPrecision:6,resultRecordCount:2000,f:'json'});
         self.arcgisFetch(url).then(function(d:any){
           if(self._ucddSeq!==seq) return;
           if(!d||d.error) return;
