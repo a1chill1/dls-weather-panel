@@ -1087,6 +1087,7 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
         return true; });
       feats.forEach((f:any)=>{ f.properties.__src='tn'; });
       this.showResults(feats,src);
+      if(feats.length===1){ this.gotoFeature(feats[0], normalize(feats[0].properties, src)); }
     }).catch((e:any)=>this.setStatus('Search failed: '+e.message));
   }
 
