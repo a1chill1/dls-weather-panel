@@ -99,9 +99,17 @@ const TS_TN: any = {
   SULLIVAN:{c:'T94'}, UNICOI:{c:'56'}, UNION:{c:'T89'}, VANBUREN:{c:'T88'}, WASHINGTON:{c:'3'},
   WEAKLEY:{c:'32'}, WHITE:{c:'36'}, WILLIAMSON:{c:'T4'}, WILSON:{c:'24'}
 };
-const US_TN: any = { SUMNER:1, TROUSDALE:1 };   // these go to US Title Search (handoff)
+const US_TN: any = { SUMNER:{sub:'54'}, TROUSDALE:{sub:'62'} };   // these go to US Title Search (handoff)
 const TS_BASE = 'https://www.titlesearcher.com/';
 const US_BASE = 'https://www.ustitlesearch.net/default.asp';
+const US_HOST = 'https://www.ustitlesearch.net/';
+// --- US Title Search deep-link helpers (verified live 2026-06-29) ---
+// County is SESSION state: changesubscription.asp?SubscriptionId=<acct id> (Sumner 54 / Trousdale 62).
+// Book/Page search = allbookandpagesearchresults.asp (GET). RecordBook/RecordPage MUST be zero-padded
+// to 4 (index matches 4-wide strings; unpadded => 0 results). RecordingClassId=-1 = Search All Classes.
+function usPad(v:any): string { let t=(v==null?'':String(v)).replace(/^\s+|\s+$/g,''); if(/^[0-9]+$/.test(t)){ while(t.length<4){ t='0'+t; } } return t; }
+function usCountyUrl(sub:string): string { return US_HOST+'changesubscription.asp?SubscriptionId='+encodeURIComponent(sub); }
+function usBookPageUrl(bp:any): string { return US_HOST+'allbookandpagesearchresults.asp?'+qs({ Action:'SEARCH', PageSize:'10', PageBase:'1', Page:'1', RecordingClassId:'-1', RecordBook:usPad(bp.book), RecordPage:usPad(bp.page), FilingNumber:'000000000' }); }
 
 // ---- per-county SOURCE REGISTRY (candidate field names => schema-resilient) ----
 const SOURCES: any[] = [
@@ -756,6 +764,7 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
     e.tsCnum = tsInfo ? tsInfo.c : null;
     e.localBP = parseBookPage(n);
     e.site = isUS ? 'US' : (tsInfo ? 'TS' : null);
+    e.usSub = isUS ? (isUS.sub||null) : null;
     if(e.site==='TS'){
       const sub = tsInfo.sub===true;
       const badge = sub ? '<span class="badge b-ok">included</span>' : '<span class="badge b-warn">pay-per-use</span>';
@@ -763,7 +772,7 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
       out+='<div class="note">'+(((e.gislink&&this.workerUrl)||e.localBP)?'Pulls the latest warranty-deed book/page automatically, then searches; ':'')+'falls back to owner-name search. In results, pick the WD row matching the owner.</div>';
     } else if(e.site==='US'){
       out+='<a class="btn us" href="#" data-act="deedGoUS" data-id="'+id+'">Deed search &rarr; US Title Search: '+esc(n.county)+'</a>';
-      out+='<div class="note">Opens US Title Search (your session) and surfaces the latest warranty-deed book/page to enter — that site has no direct deep-link.</div>';
+      out+='<div class="note">Opens US Title Search (your session), sets the county, and auto-runs the latest warranty-deed book/page search; book/page also copied to clipboard.</div>';
     } else if(n.state==='TN'){
       out+='<span class="note">No deed site mapped for '+esc(n.county)+' — use the assessor link.</span><br/>';
     } else if(n.state==='KY'){
@@ -1129,6 +1138,7 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
 
   private openDeferred(): any { const w=window.open('','_blank'); try{ if(w) w.document.write('<p style="font:14px/1.4 sans-serif;padding:18px;color:#333">Looking up the latest deed…</p>'); }catch(e){} return w; }
   private tsCountyThen(w:any,cnum:string,url:string): void { if(!w) return; w.location=TS_BASE+'countySearchPage.php?cnum='+cnum; setTimeout(()=>{ try{w.location=url;}catch(e){} },1600); }
+  private usCountyThen(w:any,sub:string,url:string): void { if(!w) return; w.location=usCountyUrl(sub); setTimeout(()=>{ try{w.location=url;}catch(e){} },1800); }
 
   private deedGo(id:string): void {
     const e=this.POP[id]; if(!e||!e.tsCnum) return;
@@ -1143,14 +1153,16 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
   }
   private deedName(id:string): void { const e=this.POP[id]; if(!e||!e.tsCnum) return; this.tsCountyThen(this.openDeferred(),e.tsCnum,tsNameUrl(e.owner||'')); }
   private deedGoUS(id:string): void {
-    const e=this.POP[id]; window.open(US_BASE,'_blank');
-    const show=(bp:any)=>{ this.setStatus('US Title Search · '+(e.county||'')+': Begin Search → Book/Page → Book '+bp.book+'  Page '+bp.page+(bp.type?'  ('+bp.type+')':'')); this.copyText(bp.book+' '+bp.page); };
-    if(e.localBP){ show(e.localBP); return; }
+    const e=this.POP[id]; if(!e) return;
+    const sub=e.usSub||''; const w=this.openDeferred();
+    const go=(bp:any)=>{ this.setStatus('US Title Search'+(e.county?' · '+e.county:'')+': Book '+bp.book+' Page '+bp.page+(bp.type?' ('+bp.type+')':'')); this.copyText(bp.book+' '+bp.page); const u=usBookPageUrl(bp); if(sub){ this.usCountyThen(w,sub,u); } else { try{ if(w) w.location=u; }catch(er){} } };
+    const fail=(m:string)=>{ try{ if(w) w.location=(sub?usCountyUrl(sub):US_BASE); }catch(er){} this.setStatus(m); };
+    if(e.localBP){ go(e.localBP); return; }
     if(e.gislink && this.workerUrl){
       fetch(this.workerUrl+'?gislink='+encodeURIComponent(e.gislink)).then((r)=>r.json())
-        .then((d:any)=>{ if(d&&d.ok&&d.best&&d.best.book) show(d.best); else this.setStatus('No book/page found — use name search in US Title Search'); })
-        .catch(()=>this.setStatus('Deed lookup unavailable — use name search in US Title Search'));
-    } else this.setStatus('Opened US Title Search → Begin Search.');
+        .then((d:any)=>{ if(d&&d.ok&&d.best&&d.best.book) go(d.best); else fail('No book/page found — opened US Title Search; use a name search.'); })
+        .catch(()=>fail('Deed lookup unavailable — opened US Title Search.'));
+    } else fail('Opened US Title Search — Begin Search.');
   }
   private copyText(txt:string): void { try{ if((navigator as any).clipboard) (navigator as any).clipboard.writeText(txt); }catch(e){} this.setStatus('Copied: '+txt); }
 
