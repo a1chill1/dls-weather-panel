@@ -157,6 +157,7 @@ const SOURCES: any[] = [
     search:{address:'ADDRESS',parcel:'PVA_PARCEL'} }
 ];
 
+const TN_COUNTIES=['Anderson','Bedford','Benton','Bledsoe','Blount','Bradley','Campbell','Cannon','Carroll','Carter','Cheatham','Claiborne','Clay','Cocke','Coffee','Crockett','Cumberland','Decatur','DeKalb','Dickson','Dyer','Fayette','Fentress','Franklin','Gibson','Giles','Grainger','Greene','Grundy','Hamblen','Hancock','Hardeman','Hardin','Hawkins','Haywood','Henderson','Henry','Houston','Humphreys','Jackson','Jefferson','Johnson','Lake','Lauderdale','Lawrence','Lewis','Lincoln','Loudon','Macon','Madison','Marion','Marshall','Maury','McMinn','McNairy','Meigs','Monroe','Moore','Morgan','Obion','Overton','Perry','Pickett','Polk','Putnam','Rhea','Roane','Robertson','Scott','Sequatchie','Sevier','Smith','Stewart','Sullivan','Sumner','Tipton','Trousdale','Unicoi','Union','Van Buren','Warren','Washington','Wayne','Weakley','White','Wilson'];
 const MINZOOM = 15;
 const LABELZOOM = 17;
 
@@ -358,6 +359,19 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
         .dls-pm{font-family:'Segoe UI',Arial,sans-serif;color:#0f172a;width:100%;box-sizing:border-box;}
         @media (min-width:1300px) and (orientation:landscape){ .dls-pm{width:98vw;position:relative;left:50%;margin-left:-49vw;} }
         .dls-pm .bar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:#1f2a37;color:#fff;padding:7px 10px;border-radius:8px 8px 0 0;border-bottom:3px solid #f59e0b;}
+        .dls-pm .adv-tg{background:#33445a;color:#fff;border:none;border-radius:6px;padding:5px 9px;font-size:11.5px;cursor:pointer;font-weight:600;}
+        .dls-pm .adv-tg.on{background:#f59e0b;color:#1a1205;}
+        .dls-pm #advpanel{display:none;background:#eef2f7;border-bottom:1px solid #cbd5e1;padding:8px 10px;}
+        .dls-pm #advpanel.open{display:block;}
+        .dls-pm #advpanel .advwrap{display:flex;flex-wrap:wrap;align-items:flex-end;gap:8px 10px;}
+        .dls-pm #advpanel .advf{display:flex;flex-direction:column;gap:2px;}
+        .dls-pm #advpanel label{font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;color:#475569;}
+        .dls-pm #advpanel input,.dls-pm #advpanel select{font-size:12px;padding:4px 6px;border:1px solid #94a3b8;border-radius:5px;background:#fff;color:#0f172a;box-sizing:border-box;}
+        .dls-pm #advpanel input{width:104px;}
+        .dls-pm #advpanel select#adv-county{width:154px;}
+        .dls-pm #advpanel .adv-go{background:#16a34a;color:#fff;border:none;border-radius:5px;padding:6px 12px;font-size:12px;font-weight:600;cursor:pointer;}
+        .dls-pm #advpanel .adv-clear{background:#f1f5f9;border:1px solid #cbd5e1;border-radius:5px;padding:6px 10px;font-size:12px;cursor:pointer;color:#0f172a;}
+        .dls-pm #advpanel .adv-hint{flex-basis:100%;font-size:10px;color:#64748b;margin-top:2px;}
         .dls-pm .bar strong{font-size:14px;}
         .dls-pm select,.dls-pm input{font-size:12.5px;padding:5px 7px;border:1px solid #3b4a5e;border-radius:5px;background:#fff;color:#0f172a;}
         .dls-pm #q{width:210px;}
@@ -490,6 +504,7 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
           <input id="q" placeholder="Search owner name&hellip;" />
           <button id="go">Search</button>
           <button id="clear" class="ghost">Clear</button>
+          <button id="adv-toggle" class="adv-tg" title="Advanced search: county, map, parcel, subdivision">Advanced &#9662;</button>
           <span class="sp"></span>
           <select id="base"><option value="aerial">Aerial</option><option value="streets" selected>Streets</option><option value="topo">Topo</option></select>
           <select id="zmode" title="Zoning layer (View / Edit)"><option value="off" selected>Zoning: Off</option><option value="view">Zoning: View</option><option value="edit">Zoning: Edit (tag lots)</option></select>
@@ -498,6 +513,17 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
           <button id="fs" class="ghost" title="Full screen (Esc to exit)">Full screen</button>
           <span id="status">Loading&hellip;</span>
         </div>
+        <div id="advpanel"><div class="advwrap">
+          <div class="advf"><label>County</label><select id="adv-county"></select></div>
+          <div class="advf"><label>Control Map</label><input id="adv-map" placeholder="e.g. 71" /></div>
+          <div class="advf"><label>Group</label><input id="adv-group" placeholder="opt." /></div>
+          <div class="advf"><label>Parcel</label><input id="adv-parcel" placeholder="e.g. 12 or 12.00" /></div>
+          <div class="advf"><label>Subdivision</label><input id="adv-subdiv" placeholder="name contains&hellip;" /></div>
+          <div class="advf"><label>Sort by</label><select id="adv-sort"><option value="parcel">Parcel</option><option value="owner">Owner</option><option value="address">Address</option><option value="acres">Acreage</option></select></div>
+          <button id="adv-go" class="adv-go">Search</button>
+          <button id="adv-clear" class="adv-clear">Clear</button>
+          <div class="adv-hint">Tennessee statewide (86 counties). Enter a Control Map + Parcel to jump to the exact lot, or a Subdivision name to list matches. (Owner &amp; Address use the bar above.)</div>
+        </div></div>
         <div class="stage">
           <div id="map"></div>
           <div id="results"><h4><span id="rtitle">Results</span><span class="x" id="rclose">&times;</span></h4><div id="rlist"></div></div>
@@ -513,6 +539,13 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
     $('#mode').onchange = (e:any)=>{ const p:any={owner:'Search owner name…',address:'Search street address…',parcel:'Search parcel ID…'}; $('#q').placeholder=p[e.target.value]; };
     $('#go').onclick = ()=>this.runSearch();
     $('#q').addEventListener('keydown',(e:any)=>{ if(e.key==='Enter') this.runSearch(); });
+    const advCounty = $('#adv-county');
+    if(advCounty){ const o0=document.createElement('option'); o0.value=''; o0.textContent='— County —'; advCounty.appendChild(o0); TN_COUNTIES.forEach((c:string)=>{ const o=document.createElement('option'); o.value=c; o.textContent=c; advCounty.appendChild(o); }); }
+    const advToggle = $('#adv-toggle');
+    if(advToggle) advToggle.onclick = ()=>{ const p=$('#advpanel'); const open=p.classList.toggle('open'); advToggle.classList.toggle('on', open); };
+    const advGo = $('#adv-go'); if(advGo) advGo.onclick = ()=>this.runAdvancedSearch();
+    const advClear = $('#adv-clear'); if(advClear) advClear.onclick = ()=>{ ['#adv-county','#adv-map','#adv-group','#adv-parcel','#adv-subdiv'].forEach((sl:string)=>{ const el=$(sl); if(el) el.value=''; }); this.setStatus('Advanced search cleared'); };
+    ['#adv-map','#adv-group','#adv-parcel','#adv-subdiv'].forEach((sl:string)=>{ const el=$(sl); if(el) el.addEventListener('keydown',(ev:any)=>{ if(ev.key==='Enter') this.runAdvancedSearch(); }); });
     $('#clear').onclick = ()=>{ this.hiLayer.clearLayers(); $('#results').style.display='none'; this.clearSelection(); };
     $('#rclose').onclick = ()=>{ $('#results').style.display='none'; };
     $('#base').onchange = (e:any)=>this.setBase(e.target.value);
@@ -1019,6 +1052,42 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
     const url=src.url+'?'+qs({where:where,outFields:outFieldsFor(src),returnGeometry:true,outSR:4326,resultRecordCount:60,f:'json'});
     this.arcgisFetch(url).then((d:any)=>{ if(d.error) throw new Error(d.error.message||'error'); const feats=esriToFeatures(d); feats.forEach((f:any)=>{ f.properties.__src=src.id; }); this.showResults(feats,src); })
       .catch((e:any)=>this.setStatus('Search failed: '+e.message));
+  }
+
+  private runAdvancedSearch(): void {
+    const $ = (s:string)=>this.domElement.querySelector(s) as any;
+    const src = SOURCES.filter((s)=>s.id==='tn')[0];
+    const county = ($('#adv-county').value||'').trim();
+    const mapRaw = ($('#adv-map').value||'').trim();
+    const grpRaw = ($('#adv-group').value||'').trim();
+    const parRaw = ($('#adv-parcel').value||'').trim();
+    const subRaw = ($('#adv-subdiv').value||'').trim();
+    const sortKey = ($('#adv-sort').value||'parcel');
+    if(!county){ this.setStatus('Pick a county for Advanced search'); return; }
+    if(!mapRaw && !parRaw && !subRaw){ this.setStatus('Enter a Control Map, Parcel, or Subdivision (county alone is too broad)'); return; }
+    const sql=(x:string)=>String(x).replace(/'/g,"''");
+    const map=wkNormMap(mapRaw); const p5=wkNorm5(parRaw);
+    const grp=grpRaw?grpRaw.toUpperCase():'';
+    const parts:string[]=["UPPER(COUNTY_NAME)='"+sql(county.toUpperCase())+"'"];
+    if(map) parts.push("PARCELID LIKE '___ "+sql(map)+"%'");
+    if(p5) parts.push("PARCELID LIKE '%"+sql(p5)+" %'");
+    if(subRaw) parts.push("UPPER(SUBDIV) LIKE '%"+sql(subRaw.toUpperCase())+"%'");
+    const where=parts.join(' AND ');
+    const sortFld:any={parcel:'PARCELID',owner:'OWNER',address:'ADDRESS',acres:'DEEDAC DESC'};
+    const orderBy=sortFld[sortKey]||'PARCELID';
+    this.setStatus('Searching '+county+'…');
+    const url=src.url+'?'+qs({where:where,outFields:outFieldsFor(src),orderByFields:orderBy,returnGeometry:true,outSR:4326,resultRecordCount:100,f:'json'});
+    this.arcgisFetch(url).then((d:any)=>{
+      if(d.error) throw new Error(d.error.message||'error');
+      let feats=esriToFeatures(d);
+      feats=feats.filter((f:any)=>{ const pid=String(f.properties.PARCELID||'');
+        if(map && pid.substring(4,8).replace(/\s+$/,'')!==map) return false;
+        if(p5 && pid.substring(11,16)!==p5) return false;
+        if(grp && pid.substring(8,11).replace(/\s+$/,'')!==grp) return false;
+        return true; });
+      feats.forEach((f:any)=>{ f.properties.__src='tn'; });
+      this.showResults(feats,src);
+    }).catch((e:any)=>this.setStatus('Search failed: '+e.message));
   }
 
   private showResults(feats:any[], src:any): void {
