@@ -330,10 +330,18 @@ const PALETTE:any = { 'Fielding':'Blue','Crew Assigned':'Magenta','Fielding Comp
 const STATUS_ORDER:any = ['Initial Research','Fielding','Crew Assigned','Fielding Complete','Drafting','Drafting Complete','Onsite Meeting','Waiting on Client','Waiting on Signatures','Plat Submitted','Planning Approval','HOLD','Pending Bill','Billed','Paid - Closeout','Dropped Project'];
 const DEFAULT_STATUS_ON:any = ['Fielding','Crew Assigned','Drafting','Drafting Complete','Planning Approval','Waiting on Client'];
 const DEADLINE_ORDER:any = ['Overdue','Due in 14 days','Due in 30 days','Due later','No date','Completed'];
+// ---- Inquiries layer (IQ list) — amber triangles on each inquiry's parcel; mirrors the Projects layer ----
+const IQ_INQUIRIES_GUID = 'a2da06ea-55d3-4221-9988-035800aa59a5';
+const IQ_STATUS_ORDER:any = ['Initial Research','Created Quote','Draft Quote','Sent Quote','Attempted Contact','Declined Quote','(blank)'];
+const IQ_DEFAULT_STATUS_ON:any = ['Initial Research','Draft Quote','Created Quote'];
+const IQ_COLOR = '#f59e0b';
+const IQ_EXCLUDE_STATUS = 'Accepted Quote';
+const IQ_QUOTES_REL = '/References/Quotes';
+const IQ_TRI_SVG = '<svg width="20" height="18" viewBox="0 0 20 18" xmlns="http://www.w3.org/2000/svg"><path d="M10 1.6 L18.7 16.4 L1.3 16.4 Z" fill="'+IQ_COLOR+'" stroke="#ffffff" stroke-width="1.7" stroke-linejoin="round"/></svg>';
 function colorFor(s:any){ return PALETTE[s]||'Pink'; }
 function deadlineBucket(status:any, fnlt:any){ if(status==='Paid - Closeout'||status==='Dropped Project') return 'Completed'; if(!fnlt) return 'No date'; const d=new Date(fnlt); if(isNaN(d.getTime())) return 'No date'; const now=new Date(); now.setHours(0,0,0,0); const days=(d.getTime()-now.getTime())/86400000; if(days<0) return 'Overdue'; if(days<=14) return 'Due in 14 days'; if(days<=30) return 'Due in 30 days'; return 'Due later'; }
 
-export interface IPropertyDeedMapWebPartProps { title: string; workerUrl: string; zoneListTitle: string; zoningAssetBase: string; projectsListGuid: string; }
+export interface IPropertyDeedMapWebPartProps { title: string; workerUrl: string; zoneListTitle: string; zoningAssetBase: string; projectsListGuid: string; inquiriesListGuid: string; }
 
 export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPropertyDeedMapWebPartProps> {
   private map:any; private parcelLayer:any; private hiLayer:any; private labels:any; private bases:any;
@@ -349,6 +357,8 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
   private ucddLayer:any=null; private _ucddSeq=0; private _ucddCount=0; private _ucddBounds:any=null; private _ucddZoom:number=-1; private _ucddCache:any={}; private _ucddRenderer:any=null;
   private areaState:any=null; private areaMarkers:any[]=[]; private areaLine:any=null; private _areaClick:any=null;
   private projects:any[]=[]; private projectLayer:any=null; private _projRenderer:any=null; private _projOn=false; private _projLoaded=false;
+  private inquiries:any[]=[]; private inqLayer:any=null; private _inqOn=false; private _inqLoaded=false; private inqGeo:any={}; private _quoteFolderCache:any={};
+  private iqStatusOn:any={}; private iqCountyOn:any={}; private iqYearOn:any={}; private iqSearch=''; private _collI=false; private _iqDimColl:any={status:false,county:true,year:true}; private _iqLocated=0; private _iqUnplaced=0;
   private pStatusOn:any={}; private pCountyOn:any={}; private pTypeOn:any={}; private pYearOn:any={}; private pDeadlineOn:any={}; private pSearch='';
   private jurShow:any={RBS:true,Lafayette:true,Macon:true,smith:false,smithville:false,south_carthage:false,gordonsville:false,algood:false,baxter:false,livingston:false,morrison:false,cannon:false,monterey:false,spencer:false}; private _collZ=false; private _collUcdd:boolean=false; private _collP=false; private _collLegend=false; private _dimColl:any={status:false,deadline:false,county:true,type:false,year:true};
 
@@ -376,11 +386,18 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
   private get zoneListTitle(): string { return this.properties.zoneListTitle || 'DLS Zoning Assignments'; }
   private get zoningAssetBase(): string { let b=this.properties.zoningAssetBase || (this.context.pageContext.web.absoluteUrl + '/SiteAssets/zoning/'); return b.charAt(b.length-1)==='/'?b:b+'/'; }
   private get projectsListGuid(): string { return this.properties.projectsListGuid || 'ecfa34b1-214a-4b6a-a661-0d074800714e'; }
+  private get inquiriesListGuid(): string { return this.properties.inquiriesListGuid || IQ_INQUIRIES_GUID; }
 
   public render(): void {
     this.domElement.innerHTML = `
       <style>
         .dls-pm{font-family:'Segoe UI',Arial,sans-serif;color:#0f172a;width:100%;box-sizing:border-box;}
+        .dls-pm .dls-inq{background:none;border:none;}
+        .dls-pm .dls-inq svg{display:block;filter:drop-shadow(0 1px 1.5px rgba(0,0,0,.5));}
+        .dls-pm .dls-inqpop table{border-collapse:collapse;margin:2px 0 4px;}
+        .dls-pm .dls-inqpop td{font-size:12px;padding:1px 0;vertical-align:top;}
+        .dls-pm .dls-inqpop td.k{color:#64748b;padding-right:8px;white-space:nowrap;font-size:11px;}
+        .dls-pm .dls-inq-links{display:flex;flex-direction:column;gap:2px;margin-top:2px;}
         @media (min-width:1300px) and (orientation:landscape){ .dls-pm{width:98vw;position:relative;left:50%;margin-left:-49vw;} }
         .dls-pm .bar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:#1f2a37;color:#fff;padding:7px 10px;border-radius:8px 8px 0 0;border-bottom:3px solid #f59e0b;}
         .dls-pm .adv-tg{background:#33445a;color:#fff;border:none;border-radius:6px;padding:5px 9px;font-size:11.5px;cursor:pointer;font-weight:600;}
@@ -533,6 +550,7 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
           <select id="base"><option value="aerial">Aerial</option><option value="streets" selected>Streets</option><option value="topo">Topo</option></select>
           <select id="zmode" title="Zoning layer (View / Edit)"><option value="off" selected>Zoning: Off</option><option value="view">Zoning: View</option><option value="edit">Zoning: Edit (tag lots)</option></select>
           <select id="proj" title="Survey projects layer (WIP)"><option value="off">Projects: Off</option><option value="on" selected>Projects: On</option></select>
+          <select id="inq" title="Inquiries layer (open quotes on their parcels)"><option value="off">Inquiries: Off</option><option value="on" selected>Inquiries: On</option></select>
           <select id="wmode" title="Work history layer (surveyed parcels)"><option value="off" selected>Work history: Off</option><option value="view">Work history: View</option><option value="edit">Work history: Edit (mark surveyed)</option></select>
           <button id="fs" class="ghost" title="Full screen (Esc to exit)">Full screen</button>
           <span id="status">Loading&hellip;</span>
@@ -575,11 +593,13 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
     $('#base').onchange = (e:any)=>this.setBase(e.target.value);
     $('#zmode').onchange = (e:any)=>this.setZoningMode(e.target.value);
     $('#proj').onchange = (e:any)=>this.setProjectsMode(e.target.value==='on');
+    $('#inq').onchange = (e:any)=>this.setInquiriesMode(e.target.value==='on');
     $('#wmode').onchange = (e:any)=>this.setWorkMode(e.target.value);
     $('#fs').onclick = ()=>this.toggleFs();
     this.buildMap();
     this.setZoningMode('off');   // default Zoning OFF (Projects on, Work history off)
     this.setProjectsMode(true);   // Projects layer ON by default (one Master Map)
+    this.setInquiriesMode(true);  // Inquiries layer ON by default (early-stage quotes only)
   }
 
   private buildMap(): void {
@@ -601,6 +621,8 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
     this.map.createPane('projects'); this.map.getPane('projects').style.zIndex='500';
     this._projRenderer = L.svg({pane:'projects'}); this._projRenderer.addTo(this.map);
     this.projectLayer = L.layerGroup().addTo(this.map);
+    this.map.createPane('inquiries'); this.map.getPane('inquiries').style.zIndex='510';
+    this.inqLayer = L.layerGroup().addTo(this.map);
     const FemaTiles:any = L.TileLayer.extend({ getTileUrl:function(coords:any){ const map=this._map; const ts=this.getTileSize(); const nw=map.unproject(L.point(coords.x*ts.x,coords.y*ts.y),coords.z); const se=map.unproject(L.point((coords.x+1)*ts.x,(coords.y+1)*ts.y),coords.z); const a=L.CRS.EPSG3857.project(nw), b=L.CRS.EPSG3857.project(se); const bbox=Math.min(a.x,b.x)+','+Math.min(a.y,b.y)+','+Math.max(a.x,b.x)+','+Math.max(a.y,b.y); return 'https://hazards.fema.gov/arcgis/rest/services/public/NFHL/MapServer/export?bbox='+bbox+'&bboxSR=3857&imageSR=3857&size='+ts.x+','+ts.y+'&dpi=96&format=png32&transparent=true&f=image'; } });
     this.femaLayer = new FemaTiles('', {tileSize:256, opacity:0.55, pane:'zoning', maxZoom:20, attribution:'Flood data © FEMA NFHL'});
     ZJURS.forEach((j:any)=>{ j._layer = L.imageOverlay(this.zoningAssetBase+j.file, j.bounds, {opacity:j.opacity, interactive:false, pane:'zoning'}); j._on = false; });
@@ -1032,6 +1054,7 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
     else if(act==='wdel') this.clearWorked(arg);
     else if(act==='print') this.openPrintSheet(this.selN||this.POP[id], this.selFeat);
     else if(act==='wfolder') this.openFolderByJob(arg);
+    else if(act==='qfolder') this.openQuoteFolder(arg);
   }
 
   private openDeferred(): any { const w=window.open('','_blank'); try{ if(w) w.document.write('<p style="font:14px/1.4 sans-serif;padding:18px;color:#333">Looking up the latest deed…</p>'); }catch(e){} return w; }
@@ -1160,19 +1183,21 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
   // ---- ONE combined legend: collapsible Zoning + Projects sections (in #zlegend) ----
   private buildLegend(): void {
     const el=this.domElement.querySelector('#zlegend') as any; if(!el) return;
-    const showZ=this.zoningView, showP=this._projOn, showW=this.workView;
-    if(!showZ && !showP && !showW){ el.style.display='none'; el.innerHTML=''; return; }
+    const showZ=this.zoningView, showP=this._projOn, showW=this.workView, showI=this._inqOn;
+    if(!showZ && !showP && !showW && !showI){ el.style.display='none'; el.innerHTML=''; return; }
     el.style.display='block';
     let h='';
     if(showZ) h+='<div class="lp-sec'+(this._collZ?' coll':'')+'"><div class="lp-hd" data-sec="Z"><span class="tw">&#9662;</span> Zoning</div><div class="lp-bd" id="zoneHost"></div></div>';
     if(showP) h+='<div class="lp-sec'+(this._collP?' coll':'')+'"><div class="lp-hd" data-sec="P"><span class="tw">&#9662;</span> Projects <span id="pCount" class="pp-ct"></span></div><div class="lp-bd" id="projHost"></div></div>';
     if(showW) h+='<div class="lp-sec'+(this._collW?' coll':'')+'"><div class="lp-hd" data-sec="W"><span class="tw">&#9662;</span> Work history <span id="wCount" class="pp-ct"></span></div><div class="lp-bd" id="workHost"></div></div>';
+    if(showI) h+='<div class="lp-sec'+(this._collI?' coll':'')+'"><div class="lp-hd" data-sec="I"><span class="tw">&#9662;</span> Inquiries <span id="iCount" class="pp-ct"></span></div><div class="lp-bd" id="inqHost"></div></div>';
     el.innerHTML=h;
     const self=this;
-    const hds=el.querySelectorAll('.lp-hd'); for(let i=0;i<hds.length;i++){ hds[i].addEventListener('click',function(){ const s=this.getAttribute('data-sec'); if(s==='Z') self._collZ=!self._collZ; else if(s==='P') self._collP=!self._collP; else if(s==='W') self._collW=!self._collW; if(this.parentNode) this.parentNode.classList.toggle('coll'); }); }
+    const hds=el.querySelectorAll('.lp-hd'); for(let i=0;i<hds.length;i++){ hds[i].addEventListener('click',function(){ const s=this.getAttribute('data-sec'); if(s==='Z') self._collZ=!self._collZ; else if(s==='P') self._collP=!self._collP; else if(s==='W') self._collW=!self._collW; else if(s==='I') self._collI=!self._collI; if(this.parentNode) this.parentNode.classList.toggle('coll'); }); }
     if(showZ) this.buildZPanel();
     if(showP){ this.buildProjectPanel(); this.renderProjectPins(); }
     if(showW){ this.buildWorkPanel(); }
+    if(showI){ this.buildInquiryPanel(); this.renderInquiryPins(); }
   }
 
   private buildZPanel(): void {
@@ -1515,6 +1540,171 @@ for(var k=0;k<UCDD_ZONING.length;k++){ var uu=UCDD_ZONING[k]; var ufe=this._ucdd
 
   private projReset(): void { const self=this; Object.keys(this.pStatusOn).forEach((k)=>{ self.pStatusOn[k]=DEFAULT_STATUS_ON.indexOf(k)>=0; }); [this.pCountyOn,this.pTypeOn,this.pYearOn,this.pDeadlineOn].forEach((st:any)=>{ Object.keys(st).forEach((k)=>{ st[k]=true; }); }); this.pSearch=''; const si=this.domElement.querySelector('#pSearch') as any; if(si) si.value=''; this.renderProjectPins(); this.renderProjSections(); }
 
+  // ======================= Inquiries (IQ list) layer =======================
+  private inquiriesApi(): string { return this.context.pageContext.web.absoluteUrl + "/_api/web/lists(guid'" + this.inquiriesListGuid + "')/items"; }
+
+  private setInquiriesMode(on:boolean): void {
+    this._inqOn=on;
+    const sel=this.domElement.querySelector('#inq') as any; if(sel && sel.value!==(on?'on':'off')) sel.value=on?'on':'off';
+    if(on){ this.loadInquiries(); }
+    else { if(this.inqLayer) this.inqLayer.clearLayers(); this.buildLegend(); this.setStatus('Inquiries layer off.'); }
+  }
+
+  private iqStatus(v:any): string { if(v==null) return ''; if(typeof v==='object') return String(v.Value||v.value||''); return String(v); }
+  private iqCountyName(v:any): string { let c:any=v; if(c&&typeof c==='object') c=c.Value||c.value||''; c=(c==null?'':String(c)); return c.replace(/^\d+\s*-\s*/,'').replace(/,?\s*(TN|KY)\b.*$/i,'').replace(/ COUNTY$/i,'').trim(); }
+  private iqMulti(v:any): string { if(v==null) return ''; if(Object.prototype.toString.call(v)==='[object Array]') return v.join(', '); if(typeof v==='object'&&v.results) return v.results.join(', '); return String(v); }
+  private iqUrl(v:any): string { if(!v) return ''; if(typeof v==='object') return String(v.Url||v.url||''); return String(v); }
+  private iqIsTn(name:string): boolean { const u=(name||'').toUpperCase(); for(let i=0;i<TN_COUNTIES.length;i++){ if(TN_COUNTIES[i].toUpperCase()===u) return true; } return false; }
+
+  private loadInquiries(): void {
+    if(this._inqLoaded){ this.buildLegend(); return; }
+    const cols='Id,Title,QuoteNumber,QuoteStatus,JobNumber,County,TaxMap,ParcelNumber,EstimatedAcreage,QuotedAmount,SurveyProjectType,PropertyOwnerName,PropertyOwnerLastName,PrimaryStreet,FollowUpDate,EstimatorFileUrl,EstimatorFileName,ProjectContractUrl,ProjectContractName';
+    const url=this.inquiriesApi()+'?$top=2000&$select='+cols;
+    this.setStatus('Loading inquiries…'); const self=this;
+    this.spGet(url).then((d:any)=>{
+      const items=(d&&d.value)||[]; const arr:any[]=[];
+      for(let i=0;i<items.length;i++){ const x=items[i];
+        const st=self.iqStatus(x.QuoteStatus); if(st===IQ_EXCLUDE_STATUS) continue;
+        const qn=(x.QuoteNumber==null?'':String(x.QuoteNumber)); const ym=qn.match(/^Q(\d{2})/); const yr=ym?('20'+ym[1]):'(blank)';
+        const owner=((x.PropertyOwnerName||'')+' '+(x.PropertyOwnerLastName||'')).replace(/\s+/g,' ').trim();
+        arr.push({ Id:x.Id, client:(x.Title==null?'':String(x.Title)), quote:qn, status:st||'(blank)', county:self.iqCountyName(x.County),
+          taxMap:(x.TaxMap==null?'':String(x.TaxMap)), parcel:(x.ParcelNumber==null?'':String(x.ParcelNumber)),
+          acres:x.EstimatedAcreage, amount:x.QuotedAmount, ptype:self.iqMulti(x.SurveyProjectType),
+          owner:owner, street:(x.PrimaryStreet==null?'':String(x.PrimaryStreet)), follow:x.FollowUpDate||'',
+          estUrl:self.iqUrl(x.EstimatorFileUrl), conUrl:self.iqUrl(x.ProjectContractUrl), year:yr });
+      }
+      self.inquiries=arr; self._inqLoaded=true;
+      for(let j=0;j<arr.length;j++){ const q=arr[j];
+        const s=q.status||'(blank)'; if(self.iqStatusOn[s]===undefined) self.iqStatusOn[s]=IQ_DEFAULT_STATUS_ON.indexOf(s)>=0;
+        const c=q.county||'(blank)'; if(self.iqCountyOn[c]===undefined) self.iqCountyOn[c]=true;
+        const y=q.year||'(blank)'; if(self.iqYearOn[y]===undefined) self.iqYearOn[y]=true;
+      }
+      self.setStatus('Locating '+arr.length+' inquiries on their parcels…'); self.resolveInquiryParcels();
+    }).catch((e:any)=>{ this.setStatus('Inquiries: could not load IQ list ('+e+')'); });
+  }
+
+  // Resolve each inquiry's County+TaxMap+Parcel to its exact lot via the TN statewide service (free, like Work history).
+  private resolveInquiryParcels(): void {
+    const self=this; const byCounty:any={};
+    for(let i=0;i<this.inquiries.length;i++){ const q=this.inquiries[i];
+      if(this.inqGeo[q.Id]) continue;
+      const map=wkNormMap(q.taxMap); const p5=wkNorm5(q.parcel);
+      if(!q.county || !map || !p5) continue;
+      if(!self.iqIsTn(q.county)) continue;   // statewide service covers TN 86 counties (metros/KY skipped)
+      const key=q.county.toUpperCase(); if(!byCounty[key]) byCounty[key]={county:q.county,items:[]}; byCounty[key].items.push({q:q,map:map,p5:p5});
+    }
+    const keys=Object.keys(byCounty); let pending=keys.length;
+    if(pending===0){ self.finishInquiryResolve(); return; }
+    for(let k=0;k<keys.length;k++){ this.resolveCountyParcels(byCounty[keys[k]], function(){ pending--; if(pending<=0) self.finishInquiryResolve(); }); }
+  }
+
+  private resolveCountyParcels(grp:any, done:any): void {
+    const self=this; const sql=(x:string)=>String(x).replace(/'/g,"''");
+    const ors:string[]=[]; for(let i=0;i<grp.items.length;i++){ const it=grp.items[i]; ors.push("(PARCELID LIKE '___ "+sql(it.map)+"%' AND PARCELID LIKE '%"+sql(it.p5)+" %')"); }
+    const where="UPPER(COUNTY_NAME)='"+sql(grp.county.toUpperCase())+"' AND ("+ors.join(' OR ')+")";
+    const url=WK_TN_SVC+'?'+qs({where:where,outFields:outFieldsFor(SOURCES[0]),returnGeometry:true,outSR:4326,resultRecordCount:1000,f:'json'});
+    this.arcgisFetch(url).then((d:any)=>{ const feats=esriToFeatures(d);
+      for(let g=0;g<grp.items.length;g++){ const it=grp.items[g]; if(self.inqGeo[it.q.Id]) continue;
+        for(let f=0;f<feats.length;f++){ const pid=String((feats[f].properties as any).PARCELID||'');
+          if(pid.substring(4,8).replace(/\s+$/,'')!==it.map) continue;
+          if(pid.substring(11,16)!==it.p5) continue;
+          (feats[f].properties as any).__src='tn'; const r=outerRing(feats[f].geometry); if(!r||!r.length) continue;
+          self.inqGeo[it.q.Id]={feat:feats[f], center:centroid(r)}; break;
+        }
+      }
+      done();
+    }).catch(()=>{ done(); });
+  }
+
+  private finishInquiryResolve(): void {
+    let loc=0; for(let i=0;i<this.inquiries.length;i++){ if(this.inqGeo[this.inquiries[i].Id]) loc++; }
+    this._iqLocated=loc; this._iqUnplaced=this.inquiries.length-loc;
+    this.buildLegend(); this.setStatus(this.inquiries.length+' inquiries ('+loc+' located on parcels).');
+  }
+
+  private iqVisible(q:any): boolean {
+    if(this.iqStatusOn[q.status||'(blank)']===false) return false;
+    if(this.iqCountyOn[q.county||'(blank)']===false) return false;
+    if(this.iqYearOn[q.year||'(blank)']===false) return false;
+    if(this.iqSearch){ const hay=(q.client+' '+q.owner+' '+q.street+' '+q.quote+' '+q.county).toLowerCase(); if(hay.indexOf(this.iqSearch)<0) return false; }
+    return true;
+  }
+
+  private renderInquiryPins(): void {
+    if(!this.inqLayer) return; this.inqLayer.clearLayers();
+    if(!this._inqOn){ this.updateInqCount(0); return; }
+    let shown=0; const self=this;
+    const icon=L.divIcon({className:'dls-inq',html:IQ_TRI_SVG,iconSize:[20,18],iconAnchor:[10,9]});
+    for(let i=0;i<this.inquiries.length;i++){ const q=this.inquiries[i];
+      if(!self.iqVisible(q)) continue; const g=self.inqGeo[q.Id]; if(!g) continue; shown++;
+      const m=L.marker([g.center[1],g.center[0]],{icon:icon,pane:'inquiries',title:q.client||q.quote});
+      m.bindPopup(self.inquiryPopupHtml(q),{maxWidth:300});
+      m.on('click',function(){ try{ self.selLayer.clearLayers(); self.selLayer.addData(g.feat); self.selFeat=g.feat; self.selN=normalize((g.feat.properties as any),SOURCES[0]); }catch(e){} });
+      m.addTo(self.inqLayer);
+    }
+    this.updateInqCount(shown);
+  }
+  private updateInqCount(shown:number): void { const c=this.domElement.querySelector('#iCount'); if(c) c.textContent=shown+' shown · '+this._iqLocated+' located · '+this._iqUnplaced+' not located'; }
+
+  private inquiryPopupHtml(q:any): string {
+    let rows='';
+    const row=(k:string,v:any)=>{ if(v||v===0) rows+='<tr><td class="k">'+k+'</td><td>'+esc(v)+'</td></tr>'; };
+    row('Quote #', q.quote); row('Status', q.status);
+    if(q.owner) row('Owner', q.owner);
+    if(q.street) row('Address', q.street);
+    if(q.county) row('County', q.county);
+    if(q.acres||q.acres===0) row('Est. acreage', q.acres);
+    if(q.amount||q.amount===0) row('Quoted', '$'+(+q.amount).toLocaleString());
+    if(q.ptype) row('Type', q.ptype);
+    if(q.follow){ const fd=new Date(q.follow); if(!isNaN(fd.getTime())) row('Follow-up', (fd.getMonth()+1)+'/'+fd.getDate()+'/'+fd.getFullYear()); }
+    let links='';
+    if(q.quote) links+='<a class="dls-pop-a" href="#" data-act="qfolder" data-arg="'+esc(q.quote)+'">Open quote folder &#8599;</a>';
+    if(q.estUrl) links+='<a class="dls-pop-a" href="'+esc(q.estUrl)+'" target="_blank" rel="noopener">Estimator file &#8599;</a>';
+    if(q.conUrl) links+='<a class="dls-pop-a" href="'+esc(q.conUrl)+'" target="_blank" rel="noopener">Contract &#8599;</a>';
+    const head=esc(q.client||'(inquiry)')+(q.county?' — '+esc(q.county):'');
+    return '<div class="dls-pop dls-inqpop"><b>'+head+'</b><table>'+rows+'</table>'+(links?'<div class="dls-inq-links">'+links+'</div>':'')+'</div>';
+  }
+
+  // Resolve the quote's folder under References/Quotes by QuoteNumber (startswith), like the job-folder resolver.
+  private openQuoteFolder(quoteNo:string): void {
+    if(!quoteNo){ this.setStatus('No quote number on this inquiry.'); return; }
+    const base=this.context.pageContext.web.absoluteUrl; const host=base.replace(/\/sites\/.*$/,'');
+    const spm=base.match(/(\/sites\/[^/]+)/); const sp=spm?spm[1]:''; const self=this;
+    const w=window.open('','_blank'); try{ if(w) w.document.write('<p style="font:14px/1.4 sans-serif;padding:18px;color:#333">Opening quote folder…</p>'); }catch(e){}
+    const open=(url:string)=>{ try{ if(w) w.location=url; else window.open(url,'_blank'); }catch(e){} };
+    const libUrl=host+(sp+IQ_QUOTES_REL).replace(/ /g,'%20');
+    const cached=this._quoteFolderCache[quoteNo]; if(cached){ open(cached); this.setStatus('Opened quote folder.'); return; }
+    const parentRel=(sp+IQ_QUOTES_REL).replace(/ /g,'%20');
+    const u=base+"/_api/web/GetFolderByServerRelativeUrl('"+parentRel.replace(/'/g,"''")+"')/Folders?$select=Name,ServerRelativeUrl&$filter=startswith(Name,'"+quoteNo.replace(/'/g,"''")+"')&$top=1";
+    this.spGet(u).then((d:any)=>{ const v=(d&&d.value)||[]; if(v.length){ const fu=host+v[0].ServerRelativeUrl; self._quoteFolderCache[quoteNo]=fu; open(fu); self.setStatus('Opened quote folder for '+quoteNo); } else { open(libUrl); self.setStatus('Quote folder for '+quoteNo+' not found — opened the Quotes library.'); } }).catch(()=>{ open(libUrl); });
+  }
+
+  // ---- Inquiries filter panel (mirrors the Projects panel) ----
+  private buildInquiryPanel(): void {
+    const el=this.domElement.querySelector('#inqHost') as any; if(!el) return;
+    let h='<input id="iSearch" class="pp-search" placeholder="Search client / owner / address / quote #" value="'+esc(this.iqSearch)+'"/>';
+    h+='<button class="pp-reset" id="iReset">Reset filters</button>';
+    const dims=[['status','Quote status'],['county','County'],['year','Year']];
+    for(let i=0;i<dims.length;i++){ const dim=dims[i][0], lbl=dims[i][1]; const cap=dim.charAt(0).toUpperCase()+dim.slice(1); h+='<div class="lp-sub'+(this._iqDimColl[dim]?' coll':'')+'" data-idimsec="'+dim+'"><div class="lp-subhd"><span class="tw">&#9662;</span> '+lbl+' <span class="pp-all" data-idim="'+dim+'">all</span></div><div class="lp-subbd"><div id="iq'+cap+'"></div></div></div>'; }
+    el.innerHTML=h; const self=this;
+    const si=el.querySelector('#iSearch') as any; if(si) si.oninput=function(){ self.iqSearch=(si.value||'').toLowerCase().trim(); self.renderInquiryPins(); };
+    const rb=el.querySelector('#iReset') as any; if(rb) rb.onclick=function(){ self.iqReset(); };
+    const subhds=el.querySelectorAll('.lp-subhd'); for(let i=0;i<subhds.length;i++){ subhds[i].addEventListener('click',function(e:any){ const a=(e.target&&e.target.closest)?e.target.closest('[data-idim]'):null; if(a){ self.iqAllOn(a.getAttribute('data-idim')); return; } const sub=this.parentNode; const dim=sub.getAttribute('data-idimsec'); self._iqDimColl[dim]=!self._iqDimColl[dim]; sub.classList.toggle('coll'); }); }
+    this.renderInqSections();
+  }
+  private iqCounts(keyFn:any): any { const m:any={}; for(let i=0;i<this.inquiries.length;i++){ const k=keyFn(this.inquiries[i]); m[k]=(m[k]||0)+1; } return m; }
+  private renderInqSections(): void { this.renderInqSection('#iqStatus', this.iqStatusOn, 'status'); this.renderInqSection('#iqCounty', this.iqCountyOn, 'county'); this.renderInqSection('#iqYear', this.iqYearOn, 'year'); }
+  private renderInqSection(sel:string, state:any, dim:string): void {
+    const el=this.domElement.querySelector(sel) as any; if(!el) return;
+    const keyFn = dim==='status'?(q:any)=>q.status||'(blank)' : dim==='county'?(q:any)=>q.county||'(blank)' : (q:any)=>q.year||'(blank)';
+    const counts=this.iqCounts(keyFn);
+    const keys=Object.keys(counts).sort((a:any,b:any)=>{ if(dim==='status'){ const ia=IQ_STATUS_ORDER.indexOf(a),ib=IQ_STATUS_ORDER.indexOf(b); return (ia<0?99:ia)-(ib<0?99:ib); } if(dim==='year') return b.localeCompare(a); return a.localeCompare(b); });
+    const self=this; el.innerHTML='';
+    for(let i=0;i<keys.length;i++){ const k=keys[i]; const row=document.createElement('div'); row.className='pp-row'+(state[k]===false?' off':''); row.innerHTML='<span class="pp-sq" style="background:'+IQ_COLOR+'"></span><span class="pp-nm">'+esc(k||'(blank)')+'</span><span class="pp-n">'+counts[k]+'</span>'; row.onclick=function(){ state[k]=state[k]===false; self.renderInquiryPins(); self.renderInqSections(); }; el.appendChild(row); }
+  }
+  private iqAllOn(dim:string): void { const st = dim==='status'?this.iqStatusOn:dim==='county'?this.iqCountyOn:dim==='year'?this.iqYearOn:null; if(!st) return; const ks=Object.keys(st); for(let i=0;i<ks.length;i++) st[ks[i]]=true; this.renderInquiryPins(); this.renderInqSections(); }
+  private iqReset(): void { const self=this; const ks=Object.keys(this.iqStatusOn); for(let i=0;i<ks.length;i++){ self.iqStatusOn[ks[i]]=IQ_DEFAULT_STATUS_ON.indexOf(ks[i])>=0; } [this.iqCountyOn,this.iqYearOn].forEach((st:any)=>{ const k2=Object.keys(st); for(let j=0;j<k2.length;j++) st[k2[j]]=true; }); this.iqSearch=''; const si=this.domElement.querySelector('#iSearch') as any; if(si) si.value=''; this.renderInquiryPins(); this.renderInqSections(); }
+
   // ======================= FEMA flood + drawn areas =======================
   private apiList(title:string): string { return this.context.pageContext.web.absoluteUrl + "/_api/web/lists/getbytitle('" + title.replace(/'/g,"''") + "')"; }
 
@@ -1600,7 +1790,8 @@ for(var k=0;k<UCDD_ZONING.length;k++){ var uu=UCDD_ZONING[k]; var ufe=this._ucdd
       PropertyPaneTextField('workerUrl',{label:'Deed Worker URL (Cloudflare)'}),
       PropertyPaneTextField('zoneListTitle',{label:'Zoning list title'}),
       PropertyPaneTextField('zoningAssetBase',{label:'Zoning overlays folder URL'}),
-      PropertyPaneTextField('projectsListGuid',{label:'WIP / Projects list GUID'})
+      PropertyPaneTextField('projectsListGuid',{label:'WIP / Projects list GUID'}),
+      PropertyPaneTextField('inquiriesListGuid',{label:'Inquiries (IQ) list GUID'})
     ]}]}]};
   }
 }
