@@ -1219,22 +1219,14 @@ for(var k=0;k<UCDD_ZONING.length;k++){ var uu=UCDD_ZONING[k]; var ufe=this._ucdd
     if(on.length===0 || z<UCDD_MINZOOM){ this.ucddLayer.clearLayers(); this._ucddCount=0; this._ucddBounds=null; this._ucddCache={}; if(this.map.hasLayer(this.ucddLayer)) this.map.removeLayer(this.ucddLayer); this.buildLegend(); return; }
     if(!this.map.hasLayer(this.ucddLayer)) this.ucddLayer.addTo(this.map);
     if(this._ucddBounds && this._ucddZoom===z && this._ucddBounds.contains(b)) return;
-    var pb=b.pad(0.25); this._ucddBounds=pb; this._ucddZoom=z;
+    var pb=b.pad(0.4); this._ucddBounds=pb; this._ucddZoom=z;
     var env=[pb.getWest(),pb.getSouth(),pb.getEast(),pb.getNorth()].join(',');
     var res=(b.getEast()-b.getWest())/Math.max(1,this.map.getSize().x); var off=res>0?res:0.00001;
-    var seq= ++this._ucddSeq; var cache:any={}; this._ucddCache=cache; this.ucddLayer.clearLayers(); this._ucddCount=0;
+    var seq= ++this._ucddSeq; var cache:any={}; var tmp:any[]=[]; var tot=0; var pending=on.length; var commit=function(){ if(self._ucddSeq!==seq) return; self._ucddCache=cache; self.ucddLayer.clearLayers(); for(var ti=0;ti<tmp.length;ti++){ self.ucddLayer.addLayer(tmp[ti]); } self._ucddCount=tot; self.buildLegend(); };
     for(var k2=0;k2<on.length;k2++){
       (function(c:any){
         var url=(c.url?c.url:(UCDD_BASE+'/'+c.service+'/FeatureServer/'+c.layer))+'/query?'+qs({where:'1=1',geometry:env,geometryType:'esriGeometryEnvelope',inSR:4326,spatialRel:'esriSpatialRelIntersects',outFields:c.field,returnGeometry:true,outSR:4326,maxAllowableOffset:off,geometryPrecision:6,resultRecordCount:2000,f:'json'});
-        self.arcgisFetch(url).then(function(d:any){
-          if(self._ucddSeq!==seq) return;
-          if(!d||d.error) return;
-          var feats=esriToFeatures(d); cache[c.key]=feats;
-          var lyr=L.geoJSON(feats,{pane:'ucdd',renderer:self._ucddRenderer,style:function(ft:any){ return {color:'#444',weight:0.4,fillColor:ucddColor(c.key,ft.properties[c.field]),fillOpacity:0.55}; }});
-          self.ucddLayer.addLayer(lyr);
-          self._ucddCount+=feats.length;
-          self.buildLegend();
-        }).catch(function(){});
+        self.arcgisFetch(url).then(function(d:any){ if(self._ucddSeq===seq && d && !d.error){ var feats=esriToFeatures(d); cache[c.key]=feats; var lyr=L.geoJSON(feats,{pane:'ucdd',renderer:self._ucddRenderer,style:function(ft:any){ return {color:'#444',weight:0.4,fillColor:ucddColor(c.key,ft.properties[c.field]),fillOpacity:0.55}; }}); tmp.push(lyr); tot+=feats.length; } pending--; if(pending<=0) commit(); }).catch(function(){ pending--; if(pending<=0) commit(); });
       })(on[k2]);
     }
   }
