@@ -1,6 +1,6 @@
 /* eslint-disable */
 // ============================================================================
-// DLS Property & Deed Map â SPFx client-side web part (framework: none)
+// DLS Property & Deed Map — SPFx client-side web part (framework: none)
 // Port of the standalone 2026-06-18 map. Leaflet is BUNDLED (imported below),
 // NOT from a CDN (this tenant blocks external scripts); the Leaflet CSS is HARDCODED in
 // the LEAFLET_CSS const below (a build-time inline step proved unreliable). The tenant ALLOWS external
@@ -10,8 +10,8 @@
 // Features: live parcels per viewport (TN statewide 86 co. + Davidson/Hamilton/
 // Rutherford/Montgomery/Williamson/Shelby + KY Simpson/Pulaski/Warren); owner /
 // address / parcel search; click a parcel for owner/address/parcel + a book/page-
-// first deed lookup (Cloudflare Worker â latest warranty-deed book/page â auto-run
-// TitleSearcher; Sumner/Trousdale â US Title Search handoff; owner-name fallback).
+// first deed lookup (Cloudflare Worker → latest warranty-deed book/page → auto-run
+// TitleSearcher; Sumner/Trousdale → US Title Search handoff; owner-name fallback).
 //
 // SPFx note: popup buttons use data-act/data-id + ONE delegated listener (module
 // scope means inline onclick can't see our functions).
@@ -25,7 +25,7 @@ import * as LeafletNS from 'leaflet';
 const L: any = LeafletNS as any;
 
 // Leaflet 1.9.4 stylesheet, hardcoded inline (the tenant blocks external CSS links, and a
-// build-time inline step proved unreliable â so the CSS lives here so it can never be dropped).
+// build-time inline step proved unreliable — so the CSS lives here so it can never be dropped).
 const LEAFLET_CSS = `
 .leaflet-pane,.leaflet-tile,.leaflet-marker-icon,.leaflet-marker-shadow,.leaflet-tile-container,.leaflet-pane>svg,.leaflet-pane>canvas,.leaflet-zoom-box,.leaflet-image-layer,.leaflet-layer{position:absolute;left:0;top:0;}
 .leaflet-container{overflow:hidden;-webkit-tap-highlight-color:transparent;background:#ddd;outline-offset:1px;font-family:"Helvetica Neue",Arial,Helvetica,sans-serif;font-size:12px;line-height:1.5;}
@@ -105,52 +105,52 @@ const US_BASE = 'https://www.ustitlesearch.net/default.asp';
 
 // ---- per-county SOURCE REGISTRY (candidate field names => schema-resilient) ----
 const SOURCES: any[] = [
-  { id:'tn', label:'TN â Statewide (86 counties)', state:'TN',
+  { id:'tn', label:'TN — Statewide (86 counties)', state:'TN',
     url:'https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0/query',
     bbox:[-90.45,34.94,-81.60,36.72], countyField:'COUNTY_NAME', where:'1=1',
     f:{pin:['PARCELID'],owner:['OWNER'],owner2:['OWNER2'],address:['ADDRESS'],subdiv:['SUBDIV'],lot:['LOT'],acres:['DEEDAC'],assr:['LINK_TPV','LINK_TPAD'],tpad:['LINK_TPAD'],gislinkf:['GISLINK'],parcelno:['PARCEL']},
     search:{owner:'OWNER',address:'ADDRESS',parcel:'PARCELID'} },
-  { id:'davidson', label:'TN â Davidson / Nashville', state:'TN', county:'DAVIDSON',
+  { id:'davidson', label:'TN — Davidson / Nashville', state:'TN', county:'DAVIDSON',
     url:'https://maps.nashville.gov/arcgis/rest/services/Cadastral/Parcels/MapServer/0/query',
     bbox:[-87.06,35.96,-86.51,36.41], where:"FeatureType IS NULL OR FeatureType<>'Unit'",
     f:{pin:['APN','STANPAR'],owner:['Owner'],address:['PropAddr'],mail:['OwnAddr1'],acres:['Acres','DeededAcreage'],zoning:['Zoning'],deedref:['OwnInstr']},
     search:{owner:'Owner',address:'PropAddr',parcel:'APN'} },
-  { id:'hamilton', label:'TN â Hamilton / Chattanooga', state:'TN', county:'HAMILTON',
+  { id:'hamilton', label:'TN — Hamilton / Chattanooga', state:'TN', county:'HAMILTON',
     url:'https://mapsdev.hamiltontn.gov/hcwa03/rest/services/Live_Parcels/MapServer/0/query',
     bbox:[-85.55,34.98,-84.96,35.46], where:"OWNERNAME1<>'Update in Progress'",
     f:{pin:['PARCEL','TAX_MAP_NO','GISLINK'],owner:['OWNERNAME1'],owner2:['OWNERNAME2'],address:['ADDRESS']},
     search:{owner:'OWNERNAME1',address:'ADDRESS',parcel:'PARCEL'} },
-  { id:'rutherford', label:'TN â Rutherford / Murfreesboro', state:'TN', county:'RUTHERFORD',
+  { id:'rutherford', label:'TN — Rutherford / Murfreesboro', state:'TN', county:'RUTHERFORD',
     url:'https://services.arcgis.com/36I6IHIdr660pAyH/ArcGIS/rest/services/ParcelsCAMA1/FeatureServer/0/query',
     bbox:[-86.62,35.64,-86.03,36.05], where:'GISLINK IS NOT NULL',
     f:{pin:['ParcelID','GISLINK'],owner:['Owner1'],owner2:['Owner2'],address:['FormattedLocation','STREETADDRESS'],mail:['MailingAddress'],subdiv:['SUBDIVISION'],lot:['LOT'],acres:['CALCACRES','DEEDACRES'],zoning:['ZONING'],legalref:['LegalReference']},
     search:{owner:'Owner1',address:'FormattedLocation',parcel:'ParcelID'} },
-  { id:'montgomery', label:'TN â Montgomery / Clarksville', state:'TN', county:'MONTGOMERY',
+  { id:'montgomery', label:'TN — Montgomery / Clarksville', state:'TN', county:'MONTGOMERY',
     url:'https://apnsgis4.apsu.edu/arcgis/rest/services/CMCGIS/MontViewer/FeatureServer/2/query',
     bbox:[-87.50,36.39,-87.00,36.71], where:'1=1',
     f:{pin:['parcelid','gislink'],owner:['owner'],owner2:['owner2'],address:['propertyaddress']},
     search:{owner:'owner',address:'propertyaddress',parcel:'parcelid'} },
-  { id:'williamson', label:'TN â Williamson / Franklin', state:'TN', county:'WILLIAMSON',
+  { id:'williamson', label:'TN — Williamson / Franklin', state:'TN', county:'WILLIAMSON',
     url:'http://arcgis2.williamson-tn.org/arcgis/rest/services/IDT/DataPull/MapServer/4/query',
-    bbox:[-87.18,35.68,-86.68,36.08], where:'1=1', note:'HTTP-only host â blocked from an HTTPS page (mixed content)',
+    bbox:[-87.18,35.68,-86.68,36.08], where:'1=1', note:'HTTP-only host — blocked from an HTTPS page (mixed content)',
     f:{pin:['parcel_id','GISLINK'],owner:['owner1'],owner2:['owner2'],address:['ADDRESS']},
     search:{owner:'owner1',address:'ADDRESS',parcel:'parcel_id'} },
-  { id:'shelby', label:'TN â Shelby / Memphis', state:'TN', county:'SHELBY',
+  { id:'shelby', label:'TN — Shelby / Memphis', state:'TN', county:'SHELBY',
     url:'https://gis.shelbycountytn.gov/public/rest/services/Parcel/CERT_Parcel/MapServer/0/query',
     bbox:[-90.31,34.94,-89.64,35.42], where:'1=1', note:'their DB connection was intermittent',
     f:{pin:['PARCELID','PARID'],owner:['OWNER'],owner2:['OWNER_EXT'],address:['PAR_ADDR1'],mail:['OWN_ADDR1']},
     search:{owner:'OWNER',address:'PAR_ADDR1',parcel:'PARCELID'} },
-  { id:'ky_simpson', label:'KY â Simpson / Franklin', state:'KY', county:'SIMPSON',
+  { id:'ky_simpson', label:'KY — Simpson / Franklin', state:'KY', county:'SIMPSON',
     url:'https://services8.arcgis.com/D3RgmiBYTvYcNK2j/arcgis/rest/services/Parcel2026view/FeatureServer/0/query',
     bbox:[-86.78,36.62,-86.42,36.87], where:"PIDN<>' '",
     f:{pin:['PIDN'],owner:['NAME'],address:['Property_L'],mail:['Address_Li'],acres:['ACRES'],deedref:['DEED']},
     search:{owner:'NAME',address:'Property_L',parcel:'PIDN'} },
-  { id:'ky_pulaski', label:'KY â Pulaski / Somerset', state:'KY', county:'PULASKI',
+  { id:'ky_pulaski', label:'KY — Pulaski / Somerset', state:'KY', county:'PULASKI',
     url:'https://services5.arcgis.com/cnJiyVVCFyUslPPa/arcgis/rest/services/ParcelUpdate_2026/FeatureServer/2/query',
     bbox:[-84.82,36.91,-84.29,37.29], where:"parcel_id<>' '",
     f:{pin:['parcel_id','Parc_lbl','Account'],owner:['owner1'],owner2:['owner2'],address:['prop_stree'],mail:['own_street'],acres:['legal_acre'],deedBook:['deed_book'],deedPage:['deed_page']},
     search:{owner:'owner1',address:'prop_stree',parcel:'parcel_id'} },
-  { id:'ky_warren', label:'KY â Warren / Bowling Green', state:'KY', county:'WARREN',
+  { id:'ky_warren', label:'KY — Warren / Bowling Green', state:'KY', county:'WARREN',
     url:'https://webgis.bgky.org/server/rest/services/CCPC/CCPC_Parcels/MapServer/0/query',
     bbox:[-86.61,36.77,-86.26,37.11], where:'1=1', ownerWithheld:true,
     f:{pin:['PVA_PARCEL'],address:['ADDRESS'],subdiv:['SUBNAME'],lot:['LOT_NUMBER'],acres:['ACRES'],zoning:['ZONING']},
@@ -194,7 +194,7 @@ function nearestJur(ll:any){ let best:any=null, bd=Infinity; ZJURS.forEach((j:an
 function ringOpen(r:any){ if(!r||r.length<2) return r||[]; const a=r.slice(); if(a.length>1 && a[0][0]===a[a.length-1][0] && a[0][1]===a[a.length-1][1]) a.pop(); return a; }
 function ringBounds(r:any){ let mnx=Infinity,mny=Infinity,mxx=-Infinity,mxy=-Infinity; for(let i=0;i<r.length;i++){ const p=r[i]; if(p[0]<mnx)mnx=p[0]; if(p[0]>mxx)mxx=p[0]; if(p[1]<mny)mny=p[1]; if(p[1]>mxy)mxy=p[1]; } return [mnx,mny,mxx,mxy]; }
 function sideOf(P:any,A:any,B:any){ return (B[0]-A[0])*(P[1]-A[1])-(B[1]-A[1])*(P[0]-A[0]); }
-// Robust split of a simple polygon ring by an INFINITE line (handles concave / irregular lots â no
+// Robust split of a simple polygon ring by an INFINITE line (handles concave / irregular lots — no
 // half-plane "seam" bleed across a parcel boundary). Returns 1+ simple sub-rings that exactly tile the lot.
 function splitRingByLine(ringIn:any,A:any,B:any){
   const ring=ringOpen(ringIn); const n=ring.length; if(n<3) return [ring];
@@ -330,7 +330,7 @@ const PALETTE:any = { 'Fielding':'Blue','Crew Assigned':'Magenta','Fielding Comp
 const STATUS_ORDER:any = ['Initial Research','Fielding','Crew Assigned','Fielding Complete','Drafting','Drafting Complete','Onsite Meeting','Waiting on Client','Waiting on Signatures','Plat Submitted','Planning Approval','HOLD','Pending Bill','Billed','Paid - Closeout','Dropped Project'];
 const DEFAULT_STATUS_ON:any = ['Fielding','Crew Assigned','Drafting','Drafting Complete','Planning Approval','Waiting on Client'];
 const DEADLINE_ORDER:any = ['Overdue','Due in 14 days','Due in 30 days','Due later','No date','Completed'];
-// ---- Inquiries layer (IQ list) â amber triangles on each inquiry's parcel; mirrors the Projects layer ----
+// ---- Inquiries layer (IQ list) — amber triangles on each inquiry's parcel; mirrors the Projects layer ----
 const IQ_INQUIRIES_GUID = 'a2da06ea-55d3-4221-9988-035800aa59a5';
 const IQ_STATUS_ORDER:any = ['Initial Research','Created Quote','Draft Quote','Sent Quote','Attempted Contact','Declined Quote','(blank)'];
 const IQ_DEFAULT_STATUS_ON:any = ['Initial Research','Draft Quote','Created Quote'];
@@ -578,11 +578,11 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
     const $ = (s:string)=>this.domElement.querySelector(s) as any;
     const areaSel = $('#area');
     SOURCES.forEach((s)=>{ const o=document.createElement('option'); o.value=s.id; o.textContent=s.label; areaSel.appendChild(o); });
-    $('#mode').onchange = (e:any)=>{ const p:any={owner:'Search owner nameâ¦',address:'Search street addressâ¦',parcel:'Search parcel IDâ¦'}; $('#q').placeholder=p[e.target.value]; };
+    $('#mode').onchange = (e:any)=>{ const p:any={owner:'Search owner name…',address:'Search street address…',parcel:'Search parcel ID…'}; $('#q').placeholder=p[e.target.value]; };
     $('#go').onclick = ()=>this.runSearch();
     $('#q').addEventListener('keydown',(e:any)=>{ if(e.key==='Enter') this.runSearch(); });
     const advCounty = $('#adv-county');
-    if(advCounty){ const o0=document.createElement('option'); o0.value=''; o0.textContent='â County â'; advCounty.appendChild(o0); TN_COUNTIES.forEach((c:string)=>{ const o=document.createElement('option'); o.value=c; o.textContent=c; advCounty.appendChild(o); }); }
+    if(advCounty){ const o0=document.createElement('option'); o0.value=''; o0.textContent='— County —'; advCounty.appendChild(o0); TN_COUNTIES.forEach((c:string)=>{ const o=document.createElement('option'); o.value=c; o.textContent=c; advCounty.appendChild(o); }); }
     const advToggle = $('#adv-toggle');
     if(advToggle) advToggle.onclick = ()=>{ const p=$('#advpanel'); const open=p.classList.toggle('open'); advToggle.classList.toggle('on', open); };
     const advGo = $('#adv-go'); if(advGo) advGo.onclick = ()=>this.runAdvancedSearch();
@@ -606,9 +606,9 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
     const mapEl = this.domElement.querySelector('#map');
     this.map = L.map(mapEl,{minZoom:6,maxZoom:20}).setView([36.521,-86.029],16);
     this.bases = {
-      aerial: L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',{maxZoom:20,attribution:'Imagery Â© Esri'}),
-      streets: L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}',{maxZoom:20,attribution:'Â© Esri'}),
-      topo: L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}',{maxZoom:20,attribution:'Â© Esri'})
+      aerial: L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',{maxZoom:20,attribution:'Imagery © Esri'}),
+      streets: L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}',{maxZoom:20,attribution:'© Esri'}),
+      topo: L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}',{maxZoom:20,attribution:'© Esri'})
     };
     this.bases.streets.addTo(this.map);
     this.labels = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}',{maxZoom:20,opacity:.9});
@@ -624,7 +624,7 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
     this.map.createPane('inquiries'); this.map.getPane('inquiries').style.zIndex='510'; this.map.on('popupopen',(e:any)=>this.onPopupOpen(e));
     this.inqLayer = L.layerGroup().addTo(this.map);
     const FemaTiles:any = L.TileLayer.extend({ getTileUrl:function(coords:any){ const map=this._map; const ts=this.getTileSize(); const nw=map.unproject(L.point(coords.x*ts.x,coords.y*ts.y),coords.z); const se=map.unproject(L.point((coords.x+1)*ts.x,(coords.y+1)*ts.y),coords.z); const a=L.CRS.EPSG3857.project(nw), b=L.CRS.EPSG3857.project(se); const bbox=Math.min(a.x,b.x)+','+Math.min(a.y,b.y)+','+Math.max(a.x,b.x)+','+Math.max(a.y,b.y); return 'https://hazards.fema.gov/arcgis/rest/services/public/NFHL/MapServer/export?bbox='+bbox+'&bboxSR=3857&imageSR=3857&size='+ts.x+','+ts.y+'&dpi=96&format=png32&transparent=true&f=image'; } });
-    this.femaLayer = new FemaTiles('', {tileSize:256, opacity:0.55, pane:'zoning', maxZoom:20, attribution:'Flood data Â© FEMA NFHL'});
+    this.femaLayer = new FemaTiles('', {tileSize:256, opacity:0.55, pane:'zoning', maxZoom:20, attribution:'Flood data © FEMA NFHL'});
     ZJURS.forEach((j:any)=>{ j._layer = L.imageOverlay(this.zoningAssetBase+j.file, j.bounds, {opacity:j.opacity, interactive:false, pane:'zoning'}); j._on = false; });
     this.map.createPane('worked'); this.map.getPane('worked').style.zIndex='470';
     this.map.createPane('sel'); this.map.getPane('sel').style.zIndex='480'; this.map.getPane('sel').style.pointerEvents='none';
@@ -639,7 +639,7 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
     this.hiLayer = L.geoJSON(null,{ style:{color:'#ff2d55',weight:3,fill:false} }).addTo(this.map);
     this.map.on('moveend',()=>{ clearTimeout(this.loadTimer); this.loadTimer=setTimeout(()=>this.maybeLoad(),250); });
     this.map.on('zoomend',()=>{ this.renderLabels(); });
-    this.setStatus('Pan/zoom to your area â parcels load at zoom '+MINZOOM+'+');
+    this.setStatus('Pan/zoom to your area — parcels load at zoom '+MINZOOM+'+');
     setTimeout(()=>{ try{ this.map.invalidateSize(); }catch(e){} this.loadParcels(); },400);
     window.addEventListener('resize',()=>{ clearTimeout(this.rzTimer); this.rzTimer=setTimeout(()=>{ try{ if(this.map) this.map.invalidateSize(); }catch(e){} },200); });
     this.loadZoning();
@@ -670,7 +670,7 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
     });
   }
 
-  // Only reload if the view left the already-loaded (padded) area â keeps popups open and avoids flicker on small pans / popup auto-pan.
+  // Only reload if the view left the already-loaded (padded) area — keeps popups open and avoids flicker on small pans / popup auto-pan.
   private maybeLoad(): void {
     this.loadUcdd();   // self-guards: only when Zoning on + a UCDD sublayer checked + view left cache
     const z=this.map.getZoom();
@@ -682,19 +682,19 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
     this.inflight.forEach((c)=>{ try{c.abort();}catch(e){} }); this.inflight=[];
     const mySeq = ++this.loadSeq;   // anti-flicker: a stale load must not clobber a newer one
     const legsrc = this.domElement.querySelector('#legsrc') as any;
-    if(this.map.getZoom()<MINZOOM){ this.parcelLayer.clearLayers(); this.loadedBounds=null; this.loadedZoom=-1; this.setStatus('Zoom in to load parcels (zoom â¥ '+MINZOOM+')'); if(legsrc) legsrc.textContent='Active data: â'; return; }
+    if(this.map.getZoom()<MINZOOM){ this.parcelLayer.clearLayers(); this.loadedBounds=null; this.loadedZoom=-1; this.setStatus('Zoom in to load parcels (zoom ≥ '+MINZOOM+')'); if(legsrc) legsrc.textContent='Active data: —'; return; }
     const srcs=this.activeSources();
     if(srcs.length===0){ this.parcelLayer.clearLayers(); this.loadedBounds=null; this.setStatus('No parcel source covers this view'); return; }
-    if(legsrc) legsrc.textContent='Active data: '+srcs.map((s)=>s.label.replace(/^..? â /,'')).join(', ');
+    if(legsrc) legsrc.textContent='Active data: '+srcs.map((s)=>s.label.replace(/^..? — /,'')).join(', ');
     const pb=this.map.getBounds().pad(0.2); this.loadedBounds=pb; this.loadedZoom=this.map.getZoom();
     const env=[pb.getWest(),pb.getSouth(),pb.getEast(),pb.getNorth()].join(',');
-    this.setStatus('Loading parcelsâ¦');   // keep the OLD parcels on screen until the new set is ready (no flash)
+    this.setStatus('Loading parcels…');   // keep the OLD parcels on screen until the new set is ready (no flash)
     let got=0, done=0; const errs:string[]=[]; const acc:any[]=[];
-    const short=(s:any)=>s.label.replace(/^..? â /,'');
-    const finish=()=>{ if(mySeq!==this.loadSeq) return; if(done===srcs.length){ this.parcelLayer.clearLayers(); if(acc.length) this.parcelLayer.addData(acc); this.setStatus(got+' parcels'+(errs.length?'  Â· unavailable: '+errs.join('; '):'')); this.renderLabels(); } };
+    const short=(s:any)=>s.label.replace(/^..? — /,'');
+    const finish=()=>{ if(mySeq!==this.loadSeq) return; if(done===srcs.length){ this.parcelLayer.clearLayers(); if(acc.length) this.parcelLayer.addData(acc); this.setStatus(got+' parcels'+(errs.length?'  · unavailable: '+errs.join('; '):'')); this.renderLabels(); } };
     const httpsPage = (typeof location!=='undefined' && location.protocol==='https:');
     srcs.forEach((s)=>{
-      if(httpsPage && /^http:\/\//i.test(s.url)){ errs.push(short(s)+' (HTTP-only â needs HTTPS proxy)'); done++; finish(); return; }
+      if(httpsPage && /^http:\/\//i.test(s.url)){ errs.push(short(s)+' (HTTP-only — needs HTTPS proxy)'); done++; finish(); return; }
       const ctrl=new AbortController(); this.inflight.push(ctrl);
       const url=s.url+'?'+qs({where:s.where||'1=1',geometry:env,geometryType:'esriGeometryEnvelope',inSR:4326,spatialRel:'esriSpatialRelIntersects',outFields:outFieldsFor(s),returnGeometry:true,outSR:4326,resultRecordCount:2000,f:'json'});
       this.arcgisFetch(url,ctrl.signal).then((d:any)=>{
@@ -706,7 +706,7 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
   }
 
   private onFeat(feat:any, layer:any): void {
-    // Standalone MAP popup (NOT bound to the parcel layer) so a parcel reload can't close it â no re-clicking.
+    // Standalone MAP popup (NOT bound to the parcel layer) so a parcel reload can't close it → no re-clicking.
     layer.on('click',(ev:any)=>{
       if(this.splitState||this.areaState) return;
       const src=SOURCES.filter((s)=>s.id===feat.properties.__src)[0]||SOURCES[0];
@@ -734,13 +734,13 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
     const row=(k:string,v:any)=>{ if(v) rows+='<tr><td class="k">'+k+'</td><td>'+esc(v)+'</td></tr>'; };
     let owner=n.owner+(n.owner2?'; '+n.owner2:'');
     if(n.src.ownerWithheld && !owner) owner='<i>(owner not published by county)</i>';
-    rows+='<tr><td class="k">Owner</td><td>'+(owner||'â')+'</td></tr>';
+    rows+='<tr><td class="k">Owner</td><td>'+(owner||'—')+'</td></tr>';
     row('Address',n.address); row('Parcel',n.pin);
     if(n.acres) row('Acres', (+n.acres? (+n.acres).toFixed(2):n.acres));
     if(n.subdiv) row('Subdiv', n.subdiv+(n.lot?'  Lot '+n.lot:''));
     if(n.zoning) row('Zoning', n.zoning);
-    const zt=this.zoneByPin[pinKey(n.pin)]; if(zt){ const zj=jurById(zt.jur)||ZJURS[0]; if(zt.split&&zt.pieces){ row('Zone ('+(zt.jur||'')+')', zt.pieces.map((p:any)=>p.z||'blank').join(' / ')+' (split lot)'); } else { row('Zone ('+(zt.jur||'')+')', zt.zone+' â '+((zj.names&&zj.names[zt.zone])||'')+(zt.flood?' Â· Floodplain':'')); } }
-    if(n.ucdd && n.ucdd.length){ for(let ui=0;ui<n.ucdd.length;ui++){ const uz=n.ucdd[ui]; row('Zone ('+uz.label+')', uz.zone+(uz.name?' â '+uz.name:'')+' Â· official zoning'); } }
+    const zt=this.zoneByPin[pinKey(n.pin)]; if(zt){ const zj=jurById(zt.jur)||ZJURS[0]; if(zt.split&&zt.pieces){ row('Zone ('+(zt.jur||'')+')', zt.pieces.map((p:any)=>p.z||'blank').join(' / ')+' (split lot)'); } else { row('Zone ('+(zt.jur||'')+')', zt.zone+' — '+((zj.names&&zj.names[zt.zone])||'')+(zt.flood?' · Floodplain':'')); } }
+    if(n.ucdd && n.ucdd.length){ for(let ui=0;ui<n.ucdd.length;ui++){ const uz=n.ucdd[ui]; row('Zone ('+uz.label+')', uz.zone+(uz.name?' — '+uz.name:'')+' · official zoning'); } }
     if(this.workView){ const wj=this.workedByPin[pinKey(n.pin)]; if(wj&&wj.length){ let wb=''; for(let wi=0;wi<wj.length;wi++){ const w=wj[wi]; wb+='<div class="dls-wk"><b>'+esc(w.job||'')+'</b>'+(w.name?' '+esc(w.name):'')+(w.job?' <a class="dls-pop-a" href="#" data-act="wfolder" data-arg="'+esc(w.job)+'">Open folder &#8599;</a>':'')+'</div>'; } rows+='<tr><td class="k">Surveyed</td><td>'+wb+'</td></tr>'; } }
     if(n.deedBook||n.deedPage) row('Deed','Bk '+n.deedBook+' Pg '+n.deedPage);
     else if(n.legalref) row('Deed ref', n.legalref);
@@ -763,11 +763,11 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
       out+='<div class="note">'+(((e.gislink&&this.workerUrl)||e.localBP)?'Pulls the latest warranty-deed book/page automatically, then searches; ':'')+'falls back to owner-name search. In results, pick the WD row matching the owner.</div>';
     } else if(e.site==='US'){
       out+='<a class="btn us" href="#" data-act="deedGoUS" data-id="'+id+'">Deed search &rarr; US Title Search: '+esc(n.county)+'</a>';
-      out+='<div class="note">Opens US Title Search (your session) and surfaces the latest warranty-deed book/page to enter â that site has no direct deep-link.</div>';
+      out+='<div class="note">Opens US Title Search (your session) and surfaces the latest warranty-deed book/page to enter — that site has no direct deep-link.</div>';
     } else if(n.state==='TN'){
-      out+='<span class="note">No deed site mapped for '+esc(n.county)+' â use the assessor link.</span><br/>';
+      out+='<span class="note">No deed site mapped for '+esc(n.county)+' — use the assessor link.</span><br/>';
     } else if(n.state==='KY'){
-      out+='<a class="btn ts payg" href="'+TS_BASE+'countySelect.php" target="_blank" rel="noopener">TitleSearcher (KY) Â· pick county</a> <span class="note">KY not yet mapped</span><br/>';
+      out+='<a class="btn ts payg" href="'+TS_BASE+'countySelect.php" target="_blank" rel="noopener">TitleSearcher (KY) · pick county</a> <span class="note">KY not yet mapped</span><br/>';
     }
     out+='<div style="margin-top:5px">';
     if(n.owner) out+='<button class="cp" data-act="cpf" data-id="'+id+'" data-arg="owner">Copy owner</button>';
@@ -857,8 +857,8 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
     if(this.workView){ if(this.workedGeomLayer && !this.map.hasLayer(this.workedGeomLayer)) this.workedGeomLayer.addTo(this.map); this.ensureWorkedGeom(); } else { if(this.workedGeomLayer && this.map.hasLayer(this.workedGeomLayer)) this.map.removeLayer(this.workedGeomLayer); }
     this.buildLegend();
     this.restyleParcels();
-    if(v==='edit') this.setStatus('Work history EDIT â click a lot, then pick its WIP job (or type an older one) to mark it surveyed.');
-    else if(v==='view') this.setStatus('Work history VIEW â surveyed lots are outlined and filled green. '+this._workCount+' lots.');
+    if(v==='edit') this.setStatus('Work history EDIT — click a lot, then pick its WIP job (or type an older one) to mark it surveyed.');
+    else if(v==='view') this.setStatus('Work history VIEW — surveyed lots are outlined and filled green. '+this._workCount+' lots.');
     else this.setStatus('Work history off.');
     this.map.closePopup();
   }
@@ -929,7 +929,7 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
   }
 
   private openWorkPicker(n:any, ll:any, _feat?:any): void {
-    const pin=pinKey(n.pin); if(!pin){ this.setStatus('This parcel has no ID â cannot mark it.'); return; }
+    const pin=pinKey(n.pin); if(!pin){ this.setStatus('This parcel has no ID — cannot mark it.'); return; }
     this.wTarget={pin:pin, raw:String(n.pin).trim(), ll:ll};
     this.renderWorkPicker();
   }
@@ -938,17 +938,17 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
     const t=this.wTarget; if(!t) return;
     const cur=this.workedByPin[t.pin]||[];
     let curHtml=''; for(let i=0;i<cur.length;i++){ const w=cur[i]; curHtml+='<div class="wk-cur"><b>'+esc(w.job||'')+'</b> '+esc(w.name||'')+' <button class="zp-clear" data-act="wdel" data-arg="'+w.id+'">remove</button></div>'; }
-    let opts='<option value="">â choose a WIP job â</option>'; for(let i=0;i<this._wipPick.length;i++){ const p=this._wipPick[i]; opts+='<option value="'+i+'">'+esc((p.num||'')+(p.name?(' '+p.name):''))+'</option>'; }
+    let opts='<option value="">— choose a WIP job —</option>'; for(let i=0;i<this._wipPick.length;i++){ const p=this._wipPick[i]; opts+='<option value="'+i+'">'+esc((p.num||'')+(p.name?(' '+p.name):''))+'</option>'; }
     const html='<div class="zp"><div class="zp-h">Mark surveyed</div>'
       +'<div class="zp-pin">Parcel: <b>'+esc(t.raw)+'</b></div>'
       +(curHtml?('<div class="zp-cur">Already recorded:'+curHtml+'</div>'):'')
       +'<div class="wk-row"><select id="wkJob">'+opts+'</select></div>'
-      +'<div class="wk-or">â or type an older (pre-WIP) job â</div>'
+      +'<div class="wk-or">— or type an older (pre-WIP) job —</div>'
       +'<div class="wk-row"><input id="wkNum" placeholder="Job #"/></div>'
       +'<div class="wk-row"><input id="wkName" placeholder="Job name"/></div>'
       +'<div class="wk-row"><input id="wkFolder" placeholder="Folder URL (optional)"/></div>'
       +'<div style="margin-top:6px"><button class="zbtn2" data-act="wsave">Mark surveyed</button></div>'
-      +'<div class="zp-note">Marks this exact lot surveyed and links the job folder. Full history â adding a second job keeps the first.</div></div>';
+      +'<div class="zp-note">Marks this exact lot surveyed and links the job folder. Full history — adding a second job keeps the first.</div></div>';
     L.popup({maxWidth:300,autoPanPadding:[24,24]}).setLatLng(t.ll||this.map.getCenter()).setContent(html).openOn(this.map);
   }
 
@@ -960,7 +960,7 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
     if(!num){ const ni=this.domElement.querySelector('#wkNum') as any; const na=this.domElement.querySelector('#wkName') as any; const fo=this.domElement.querySelector('#wkFolder') as any; num=ni?(ni.value||'').trim():''; name=na?(na.value||'').trim():''; folder=fo?(fo.value||'').trim():''; }
     if(!num){ this.setStatus('Pick a WIP job or type a job number first.'); return; }
     const body:any={Title:t.raw,ParcelID:t.raw,JobNumber:num,JobName:name,FolderURL:folder,County:county,TaxMap:'',ParcelNo:'',Source:'Manual',Notes:'tagged on map'};
-    this.spPost(this.workedApi()+'/items', body).then((r:any)=>{ if(r.status>=200&&r.status<300) return r.json(); throw new Error('HTTP '+r.status); }).then((d:any)=>{ const k=t.pin; if(!this.workedByPin[k]) this.workedByPin[k]=[]; this.workedByPin[k].push({id:d&&d.Id,job:num,name:name,folder:folder,county:county,src:'Manual'}); this._workCount=this.countWorkedLots(this.workedByPin); this.restyleParcels(); if(this.workView) this.buildLegend(); this.setStatus('Marked '+t.raw+' surveyed â '+num); this.map.closePopup(); }).catch((e:any)=>this.setStatus('Save failed: '+e));
+    this.spPost(this.workedApi()+'/items', body).then((r:any)=>{ if(r.status>=200&&r.status<300) return r.json(); throw new Error('HTTP '+r.status); }).then((d:any)=>{ const k=t.pin; if(!this.workedByPin[k]) this.workedByPin[k]=[]; this.workedByPin[k].push({id:d&&d.Id,job:num,name:name,folder:folder,county:county,src:'Manual'}); this._workCount=this.countWorkedLots(this.workedByPin); this.restyleParcels(); if(this.workView) this.buildLegend(); this.setStatus('Marked '+t.raw+' surveyed → '+num); this.map.closePopup(); }).catch((e:any)=>this.setStatus('Save failed: '+e));
   }
 
   private clearWorked(rowId:string): void {
@@ -1018,7 +1018,7 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
     this.spGet(this.workedApi()+"/items?$select=ParcelID&$top=5000").then((d:any)=>{
       const seen:any={}; const list:string[]=[]; const items=(d&&d.value)||[];
       for(let i=0;i<items.length;i++){ const p=items[i].ParcelID; if(p&&!seen[pinKey(p)]){ seen[pinKey(p)]=1; list.push(p); } }
-      self.setStatus('Loading '+list.length+' surveyed lotsâ¦'); self.fetchWorkedChunks(list,0,[]);
+      self.setStatus('Loading '+list.length+' surveyed lots…'); self.fetchWorkedChunks(list,0,[]);
     }).catch(()=>{ self._workGeomLoaded=false; });
   }
   private fetchWorkedChunks(list:string[], i:number, acc:any[]): void {
@@ -1032,7 +1032,7 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
   // ================= v20: folder resolve by Job# (hybrid, no PA) =================
   private openFolderByJob(jobNo:string): void {
     if(!jobNo){ this.setStatus('No job number on this record.'); return; }
-    const w=window.open('','_blank'); try{ if(w) w.document.write('<p style="font:14px/1.4 sans-serif;padding:18px;color:#333">Opening job folderâ¦</p>'); }catch(e){}
+    const w=window.open('','_blank'); try{ if(w) w.document.write('<p style="font:14px/1.4 sans-serif;padding:18px;color:#333">Opening job folder…</p>'); }catch(e){}
     const open=(url:string)=>{ try{ if(w) w.location=url; else window.open(url,'_blank'); }catch(e){} };
     const cached=this._folderCache[jobNo]; const self=this;
     if(cached){ const m=String(cached).match(/https?:\/\/[^/]+(\/.*)$/); const sr=m?decodeURIComponent(m[1]):''; if(sr){ const ex=this.context.pageContext.web.absoluteUrl+"/_api/web/GetFolderByServerRelativeUrl('"+sr.replace(/'/g,"''")+"')/Exists"; this.spGet(ex).then((d:any)=>{ if(d&&(d.value===true||d.Exists===true)){ open(cached); self.setStatus('Opened job folder.'); } else self.resolveFolder(jobNo,open); }).catch(()=>self.resolveFolder(jobNo,open)); return; } }
@@ -1044,7 +1044,7 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
     const yr='20'+jobNo.substring(0,2); const mm=jobNo.substring(2,4);
     const parents=[yr, yr+'/'+mm, 'Archive', 'Archive/'+yr, 'Archive/'+yr+'/'+mm];
     const tryNext=(idx:number)=>{
-      if(idx>=parents.length){ open(base+"/Shared Documents/Forms/AllItems.aspx"); self.setStatus('Folder for '+jobNo+' not found â opened the library.'); return; }
+      if(idx>=parents.length){ open(base+"/Shared Documents/Forms/AllItems.aspx"); self.setStatus('Folder for '+jobNo+' not found — opened the library.'); return; }
       const parentRel=(sp+'/Shared Documents/'+parents[idx]).replace(/ /g,'%20');
       const u=base+"/_api/web/GetFolderByServerRelativeUrl('"+parentRel.replace(/'/g,"''")+"')/Folders?$select=Name,ServerRelativeUrl&$filter=startswith(Name,'"+jobNo+"')&$top=1";
       self.spGet(u).then((d:any)=>{ const v=(d&&d.value)||[]; if(v.length){ const fu=host+v[0].ServerRelativeUrl; self._folderCache[jobNo]=fu; open(fu); self.setStatus('Opened folder for '+jobNo); } else tryNext(idx+1); }).catch(()=>tryNext(idx+1));
@@ -1127,7 +1127,7 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
     else if(act==='qfolder') this.openQuoteFolder(arg);
   }
 
-  private openDeferred(): any { const w=window.open('','_blank'); try{ if(w) w.document.write('<p style="font:14px/1.4 sans-serif;padding:18px;color:#333">Looking up the latest deedâ¦</p>'); }catch(e){} return w; }
+  private openDeferred(): any { const w=window.open('','_blank'); try{ if(w) w.document.write('<p style="font:14px/1.4 sans-serif;padding:18px;color:#333">Looking up the latest deed…</p>'); }catch(e){} return w; }
   private tsCountyThen(w:any,cnum:string,url:string): void { if(!w) return; w.location=TS_BASE+'countySearchPage.php?cnum='+cnum; setTimeout(()=>{ try{w.location=url;}catch(e){} },1600); }
 
   private deedGo(id:string): void {
@@ -1137,20 +1137,20 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
     if(e.localBP){ this.tsCountyThen(w,e.tsCnum,tsBookPageUrl(e.localBP)); return; }
     if(e.gislink && this.workerUrl){
       fetch(this.workerUrl+'?gislink='+encodeURIComponent(e.gislink)).then((r)=>r.json())
-        .then((d:any)=>{ if(d&&d.ok&&d.best&&d.best.book){ this.setStatus('Latest deed: '+(d.best.type||'')+' Bk '+d.best.book+' Pg '+d.best.page); this.tsCountyThen(w,e.tsCnum,tsBookPageUrl(d.best)); } else { this.setStatus('No book/page found â using owner-name search'); nameFallback(); } })
+        .then((d:any)=>{ if(d&&d.ok&&d.best&&d.best.book){ this.setStatus('Latest deed: '+(d.best.type||'')+' Bk '+d.best.book+' Pg '+d.best.page); this.tsCountyThen(w,e.tsCnum,tsBookPageUrl(d.best)); } else { this.setStatus('No book/page found — using owner-name search'); nameFallback(); } })
         .catch(()=>nameFallback());
     } else nameFallback();
   }
   private deedName(id:string): void { const e=this.POP[id]; if(!e||!e.tsCnum) return; this.tsCountyThen(this.openDeferred(),e.tsCnum,tsNameUrl(e.owner||'')); }
   private deedGoUS(id:string): void {
     const e=this.POP[id]; window.open(US_BASE,'_blank');
-    const show=(bp:any)=>{ this.setStatus('US Title Search Â· '+(e.county||'')+': Begin Search â Book/Page â Book '+bp.book+'  Page '+bp.page+(bp.type?'  ('+bp.type+')':'')); this.copyText(bp.book+' '+bp.page); };
+    const show=(bp:any)=>{ this.setStatus('US Title Search · '+(e.county||'')+': Begin Search → Book/Page → Book '+bp.book+'  Page '+bp.page+(bp.type?'  ('+bp.type+')':'')); this.copyText(bp.book+' '+bp.page); };
     if(e.localBP){ show(e.localBP); return; }
     if(e.gislink && this.workerUrl){
       fetch(this.workerUrl+'?gislink='+encodeURIComponent(e.gislink)).then((r)=>r.json())
-        .then((d:any)=>{ if(d&&d.ok&&d.best&&d.best.book) show(d.best); else this.setStatus('No book/page found â use name search in US Title Search'); })
-        .catch(()=>this.setStatus('Deed lookup unavailable â use name search in US Title Search'));
-    } else this.setStatus('Opened US Title Search â Begin Search.');
+        .then((d:any)=>{ if(d&&d.ok&&d.best&&d.best.book) show(d.best); else this.setStatus('No book/page found — use name search in US Title Search'); })
+        .catch(()=>this.setStatus('Deed lookup unavailable — use name search in US Title Search'));
+    } else this.setStatus('Opened US Title Search → Begin Search.');
   }
   private copyText(txt:string): void { try{ if((navigator as any).clipboard) (navigator as any).clipboard.writeText(txt); }catch(e){} this.setStatus('Copied: '+txt); }
 
@@ -1165,7 +1165,7 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
     if(mode==='parcel') where="UPPER("+field+") LIKE '"+sql(term.toUpperCase())+"%'";
     else where=term.toUpperCase().split(/\s+/).map((t:string)=>"UPPER("+field+") LIKE '%"+sql(t)+"%'").join(' AND ');
     if(src.where && src.where!=='1=1') where='('+src.where+') AND ('+where+')';
-    this.setStatus('Searching '+src.label.replace(/^..? â /,'')+'â¦');
+    this.setStatus('Searching '+src.label.replace(/^..? — /,'')+'…');
     const url=src.url+'?'+qs({where:where,outFields:outFieldsFor(src),returnGeometry:true,outSR:4326,resultRecordCount:60,f:'json'});
     this.arcgisFetch(url).then((d:any)=>{ if(d.error) throw new Error(d.error.message||'error'); const feats=esriToFeatures(d); feats.forEach((f:any)=>{ f.properties.__src=src.id; }); this.showResults(feats,src); })
       .catch((e:any)=>this.setStatus('Search failed: '+e.message));
@@ -1192,7 +1192,7 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
     const where=parts.join(' AND ');
     const sortFld:any={parcel:'PARCELID',owner:'OWNER',address:'ADDRESS',acres:'DEEDAC DESC'};
     const orderBy=sortFld[sortKey]||'PARCELID';
-    this.setStatus('Searching '+county+'â¦');
+    this.setStatus('Searching '+county+'…');
     const url=src.url+'?'+qs({where:where,outFields:outFieldsFor(src),orderByFields:orderBy,returnGeometry:true,outSR:4326,resultRecordCount:100,f:'json'});
     this.arcgisFetch(url).then((d:any)=>{
       if(d.error) throw new Error(d.error.message||'error');
@@ -1213,7 +1213,7 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
     (this.domElement.querySelector('#rtitle') as any).textContent=feats.length+' result'+(feats.length===1?'':'s');
     list.innerHTML='';
     if(feats.length===0){ list.innerHTML='<div class="rrow"><span>No matches.</span></div>'; box.style.display='block'; this.setStatus('No matches'); return; }
-    feats.forEach((f:any)=>{ const n=normalize(f.properties,src); const r=document.createElement('div'); r.className='rrow'; r.innerHTML='<b>'+esc(n.owner||n.address||n.pin||'(parcel)')+'</b><span>'+esc([n.address,n.pin].filter(Boolean).join(' Â· '))+'</span>'; r.onclick=()=>this.gotoFeature(f,n); list.appendChild(r); });
+    feats.forEach((f:any)=>{ const n=normalize(f.properties,src); const r=document.createElement('div'); r.className='rrow'; r.innerHTML='<b>'+esc(n.owner||n.address||n.pin||'(parcel)')+'</b><span>'+esc([n.address,n.pin].filter(Boolean).join(' · '))+'</span>'; r.onclick=()=>this.gotoFeature(f,n); list.appendChild(r); });
     box.style.display='block'; this.setStatus(feats.length+' result(s)');
   }
 
@@ -1240,7 +1240,7 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
       const items=(d&&d.value)||[]; const m:any={};
       items.forEach((it:any)=>{ if(it.ParcelID&&it.Zone){ const e:any={zone:it.Zone,flood:!!it.Floodplain,id:it.Id,jur:it.Jurisdiction||'RBS'}; if(it.SplitGeoJSON){ try{ const arr=JSON.parse(it.SplitGeoJSON); if(arr&&arr.length){ e.split=true; e.pieces=arr; } }catch(x){} } m[pinKey(it.ParcelID)]=e; } });
       this.zoneByPin=m; this.restyleParcels(); this.buildSplitLayer();
-    }).catch(()=>{ /* list missing / no access â zoning just stays empty */ });
+    }).catch(()=>{ /* list missing / no access — zoning just stays empty */ });
   }
 
   private featPin(ft:any): string { const src=SOURCES.filter((s)=>s.id===ft.properties.__src)[0]||SOURCES[0]; return pinKey(pick(ft.properties, src.f.pin)); }
@@ -1337,8 +1337,8 @@ for(var k=0;k<UCDD_ZONING.length;k++){ var uu=UCDD_ZONING[k]; var ufe=this._ucdd
     this.applyFema();
     this.buildAreasLayer();
     this.loadUcdd();
-    if(v==='edit') this.setStatus('Zoning EDIT â set "Tag lots as" if needed, click a lot, choose its zone. Reference only.');
-    else if(v==='view') this.setStatus('Zoning VIEW â tagged lots are colored by their district.');
+    if(v==='edit') this.setStatus('Zoning EDIT — set "Tag lots as" if needed, click a lot, choose its zone. Reference only.');
+    else if(v==='view') this.setStatus('Zoning VIEW — tagged lots are colored by their district.');
     else this.setStatus('Zoning off.');
     this.map.closePopup();
   }
@@ -1348,25 +1348,25 @@ for(var k=0;k<UCDD_ZONING.length;k++){ var uu=UCDD_ZONING[k]; var ufe=this._ucdd
   }
 
   private openZonePicker(n:any, ll:any, feat?:any): void {
-    const pin=pinKey(n.pin); if(!pin){ this.setStatus('This parcel has no ID â cannot tag it.'); return; }
+    const pin=pinKey(n.pin); if(!pin){ this.setStatus('This parcel has no ID — cannot tag it.'); return; }
     const j = (this.tagJur && this.tagJur!=='auto') ? jurById(this.tagJur) : (jurAt(ll) || nearestJur(ll));
     if(!j){ this.setStatus('No zoning jurisdiction available to tag.'); return; }
     this.zTarget={pin:pin, raw:String(n.pin).trim(), jur:j.id, ll:ll, ring:outerRing(feat&&feat.geometry)};
     this.renderZonePicker();
   }
 
-  // Re-pick the jurisdiction for the lot being tagged (RBS / Lafayette / Macon) â lets a city lot that the
+  // Re-pick the jurisdiction for the lot being tagged (RBS / Lafayette / Macon) — lets a city lot that the
   // bounding box auto-detected as "Macon County" be tagged with the correct city's districts instead.
   private switchZoneJur(jurId:string): void {
     const j=jurById(jurId); if(!j||!this.zTarget) return;
     this.zTarget.jur=jurId; this.renderZonePicker();
-    this.setStatus('Jurisdiction set to '+j.name+' â now pick the district.');
+    this.setStatus('Jurisdiction set to '+j.name+' — now pick the district.');
   }
 
   private renderZonePicker(): void {
     const t=this.zTarget; if(!t||!t.jur) return; const j=jurById(t.jur); if(!j) return;
     const cur=this.zoneByPin[t.pin];
-    const curTxt = cur? (cur.split&&cur.pieces? esc(cur.pieces.map((p:any)=>p.z||'blank').join(' / '))+' (split, '+esc(cur.jur)+')' : esc(cur.zone)+' ('+esc(cur.jur)+')'+(cur.flood?' + Floodplain':'')) : 'â';
+    const curTxt = cur? (cur.split&&cur.pieces? esc(cur.pieces.map((p:any)=>p.z||'blank').join(' / '))+' (split, '+esc(cur.jur)+')' : esc(cur.zone)+' ('+esc(cur.jur)+')'+(cur.flood?' + Floodplain':'')) : '—';
     let jb=''; ZJURS.forEach((jj:any)=>{ if(!jj.taggable) return; jb+='<button class="zp-jurbtn'+(jj.id===t.jur?' on':'')+'" data-act="zjur" data-arg="'+esc(jj.id)+'">'+esc(jj.name)+'</button>'; });
     let g=''; j.zones.forEach((z:string)=>{ g+='<button class="zbtn" data-act="zset" data-arg="'+z+'" style="background:'+j.colors[z]+'">'+z+'<small>'+esc(j.names[z])+'</small></button>'; });
     const html='<div class="zp"><div class="zp-h">Set zoning &middot; '+esc(j.name)+'</div>'
@@ -1376,7 +1376,7 @@ for(var k=0;k<UCDD_ZONING.length;k++){ var uu=UCDD_ZONING[k]; var ufe=this._ucdd
       +'<div class="zp-grid">'+g+'</div>'
       +'<label class="zp-fl"><input type="checkbox" id="zpFlood"'+(cur&&cur.flood?' checked':'')+'> In 1% floodplain</label>'
       +'<div style="margin-top:4px"><button class="zp-clear" data-act="zsplitopen">Split lot&hellip;</button> <button class="zp-clear" data-act="zclear">Clear</button></div>'
-      +'<div class="zp-note">If this lot is inside a city, pick the right jurisdiction above. '+esc(j.name)+(j.accuracy==='approx'?' overlay is approximate â verify boundary lots. ':' ')+'Reference only â not an official determination.</div></div>';
+      +'<div class="zp-note">If this lot is inside a city, pick the right jurisdiction above. '+esc(j.name)+(j.accuracy==='approx'?' overlay is approximate — verify boundary lots. ':' ')+'Reference only — not an official determination.</div></div>';
     L.popup({maxWidth:300,autoPanPadding:[24,24]}).setLatLng(t.ll||this.map.getCenter()).setContent(html).openOn(this.map);
   }
 
@@ -1385,10 +1385,10 @@ for(var k=0;k<UCDD_ZONING.length;k++){ var uu=UCDD_ZONING[k]; var ufe=this._ucdd
     const j=jurById(t.jur); if(!j||j.zones.indexOf(zone)<0) return;
     const fl=this.domElement.querySelector('#zpFlood') as any; const flood=!!(fl&&fl.checked);
     const cur=this.zoneByPin[t.pin];
-    const done=(id:number)=>{ this.zoneByPin[t.pin]={zone:zone,flood:flood,id:id,jur:t.jur}; this.restyleParcels(); this.setStatus('Saved '+t.raw+' â '+zone+' ('+t.jur+')'+(flood?' + floodplain':'')); this.map.closePopup(); };
+    const done=(id:number)=>{ this.zoneByPin[t.pin]={zone:zone,flood:flood,id:id,jur:t.jur}; this.restyleParcels(); this.setStatus('Saved '+t.raw+' → '+zone+' ('+t.jur+')'+(flood?' + floodplain':'')); this.map.closePopup(); };
     if(cur && cur.id){
       this.spPost(this.listApi()+'/items('+cur.id+')', {Zone:zone,Floodplain:flood,Jurisdiction:t.jur}, {'X-HTTP-Method':'MERGE','IF-MATCH':'*'})
-        .then((r:any)=>{ if(r.status>=200&&r.status<300) done(cur.id); else this.setStatus('Save failed ('+r.status+') â check list permissions'); })
+        .then((r:any)=>{ if(r.status>=200&&r.status<300) done(cur.id); else this.setStatus('Save failed ('+r.status+') — check list permissions'); })
         .catch((e:any)=>this.setStatus('Save failed: '+e));
     } else {
       this.spPost(this.listApi()+'/items', {Title:t.raw,ParcelID:t.raw,Jurisdiction:t.jur,Zone:zone,Floodplain:flood})
@@ -1465,7 +1465,7 @@ for(var k=0;k<UCDD_ZONING.length;k++){ var uu=UCDD_ZONING[k]; var ufe=this._ucdd
   private finishSplitGeometry(): void {
     const st=this.splitState; if(!st) return;
     if(this._splitDrawPopup){ try{ this.map.closePopup(this._splitDrawPopup); }catch(e){} this._splitDrawPopup=null; }
-    if(!st.rings || st.rings.length<2){ this.setStatus('That line did not divide the lot â try again.'); this.cancelSplit(); return; }
+    if(!st.rings || st.rings.length<2){ this.setStatus('That line did not divide the lot — try again.'); this.cancelSplit(); return; }
     st.pieces=st.rings.map((r:any)=>({r:r, z:null}));
     this.renderSplitPreview(); this.openLabelPopup();
   }
@@ -1529,7 +1529,7 @@ for(var k=0;k<UCDD_ZONING.length;k++){ var uu=UCDD_ZONING[k]; var ufe=this._ucdd
   private loadProjects(): void {
     if(this._projLoaded){ this.buildLegend(); return; }
     const url = this.context.pageContext.web.absoluteUrl + "/_api/web/lists(guid'" + this.projectsListGuid + "')/items?$top=500&$select=Id,Title,JobLabel,Lat,Lng,FolderURL,County,ProjectStatus,JobTypeStandard,Property_x0020_Address,FNLTDate";
-    this.setStatus('Loading projectsâ¦');
+    this.setStatus('Loading projects…');
     this.spGet(url).then((d:any)=>{
       const items=(d&&d.value)||[]; const arr:any[]=[];
       items.forEach((x:any)=>{ if(x.Lat==null||x.Lng==null) return; const t=(x.Title==null?'':String(x.Title)); const yr=/^\d{6}/.test(t)?('20'+t.substring(0,2)):'(blank)'; const county=(x.County==null?'':String(x.County)).replace(/^\d+\s*-\s*/,'').replace(/,?\s*(TN|KY)\b.*$/i,'').trim(); arr.push({ Id:x.Id, Title:t, JobLabel:x.JobLabel||'', Lat:x.Lat, Lng:x.Lng, FolderURL:x.FolderURL||'', County:county, Status:x.ProjectStatus||'', JobType:x.JobTypeStandard||'', Address:x.Property_x0020_Address||'', Year:yr, Deadline:deadlineBucket(x.ProjectStatus||'', x.FNLTDate) }); });
@@ -1556,7 +1556,7 @@ for(var k=0;k<UCDD_ZONING.length;k++){ var uu=UCDD_ZONING[k]; var ufe=this._ucdd
     this.projects.forEach((j:any)=>{
       if(!self.projVisible(j)) return; shown++;
       const st=j.Status||'(no status)';
-      const label=j.JobLabel||(j.Title+(j.County?' â '+j.County:''));
+      const label=j.JobLabel||(j.Title+(j.County?' — '+j.County:''));
       const folder=j.FolderURL?'<a class="dls-pop-a" href="'+esc(j.FolderURL)+'" target="_blank" rel="noopener">Open project folder &#8599;</a>':'';
       const html='<div class="dls-pop"><b>'+esc(label)+'</b>'+(j.Status?'<div class="m">'+esc(j.Status)+(j.JobType?' &middot; '+esc(j.JobType):'')+'</div>':'')+(j.Address?'<div class="m">'+esc(j.Address)+'</div>':'')+folder+'</div>';
       const m=L.circleMarker([j.Lat,j.Lng],{radius:7,fillColor:colorFor(st),color:'#fff',weight:2,fillOpacity:0.9,pane:'projects',renderer:self._projRenderer});
@@ -1630,7 +1630,7 @@ for(var k=0;k<UCDD_ZONING.length;k++){ var uu=UCDD_ZONING[k]; var ufe=this._ucdd
     if(this._inqLoaded){ this.buildLegend(); return; }
     const cols='Id,Title,QuoteNumber,QuoteStatus,JobNumber,County,TaxMap,ParcelNumber,EstimatedAcreage,QuotedAmount,SurveyProjectType,PropertyOwnerName,PropertyOwnerLastName,PrimaryStreet,FollowUpDate,EstimatorFileUrl,EstimatorFileName,ProjectContractUrl,ProjectContractName';
     const url=this.inquiriesApi()+'?$top=2000&$select='+cols;
-    this.setStatus('Loading inquiriesâ¦'); const self=this;
+    this.setStatus('Loading inquiries…'); const self=this;
     this.spGet(url).then((d:any)=>{
       const items=(d&&d.value)||[]; const arr:any[]=[];
       for(let i=0;i<items.length;i++){ const x=items[i];
@@ -1649,7 +1649,7 @@ for(var k=0;k<UCDD_ZONING.length;k++){ var uu=UCDD_ZONING[k]; var ufe=this._ucdd
         const c=q.county||'(blank)'; if(self.iqCountyOn[c]===undefined) self.iqCountyOn[c]=true;
         const y=q.year||'(blank)'; if(self.iqYearOn[y]===undefined) self.iqYearOn[y]=true;
       }
-      self.setStatus('Locating '+arr.length+' inquiries on their parcelsâ¦'); self.resolveInquiryParcels();
+      self.setStatus('Locating '+arr.length+' inquiries on their parcels…'); self.resolveInquiryParcels();
     }).catch((e:any)=>{ this.setStatus('Inquiries: could not load IQ list ('+e+')'); });
   }
 
@@ -1718,7 +1718,7 @@ for(var k=0;k<UCDD_ZONING.length;k++){ var uu=UCDD_ZONING[k]; var ufe=this._ucdd
     }
     this.updateInqCount(shown);
   }
-  private updateInqCount(shown:number): void { const c=this.domElement.querySelector('#iCount'); if(c) c.textContent=shown+' shown Â· '+this._iqLocated+' located Â· '+this._iqUnplaced+' not located'; }
+  private updateInqCount(shown:number): void { const c=this.domElement.querySelector('#iCount'); if(c) c.textContent=shown+' shown · '+this._iqLocated+' located · '+this._iqUnplaced+' not located'; }
 
   private inquiryPopupHtml(q:any): string {
     let rows='';
@@ -1735,7 +1735,7 @@ for(var k=0;k<UCDD_ZONING.length;k++){ var uu=UCDD_ZONING[k]; var ufe=this._ucdd
     if(q.quote) links+='<a class="dls-pop-a" href="#" data-act="qfolder" data-arg="'+esc(q.quote)+'">Open quote folder &#8599;</a>';
     if(q.estUrl) links+='<a class="dls-pop-a" href="'+esc(q.estUrl)+'" target="_blank" rel="noopener">Estimator file &#8599;</a>';
     if(q.conUrl) links+='<a class="dls-pop-a" href="'+esc(q.conUrl)+'" target="_blank" rel="noopener">Contract &#8599;</a>';
-    const head=esc(q.client||'(inquiry)')+(q.county?' â '+esc(q.county):'');
+    const head=esc(q.client||'(inquiry)')+(q.county?' — '+esc(q.county):'');
     return '<div class="dls-pop dls-inqpop"><b>'+head+'</b><table>'+rows+'</table>'+(links?'<div class="dls-inq-links">'+links+'</div>':'')+'</div>';
   }
 
@@ -1744,13 +1744,13 @@ for(var k=0;k<UCDD_ZONING.length;k++){ var uu=UCDD_ZONING[k]; var ufe=this._ucdd
     if(!quoteNo){ this.setStatus('No quote number on this inquiry.'); return; }
     const base=this.context.pageContext.web.absoluteUrl; const host=base.replace(/\/sites\/.*$/,'');
     const spm=base.match(/(\/sites\/[^/]+)/); const sp=spm?spm[1]:''; const self=this;
-    const w=window.open('','_blank'); try{ if(w) w.document.write('<p style="font:14px/1.4 sans-serif;padding:18px;color:#333">Opening quote folderâ¦</p>'); }catch(e){}
+    const w=window.open('','_blank'); try{ if(w) w.document.write('<p style="font:14px/1.4 sans-serif;padding:18px;color:#333">Opening quote folder…</p>'); }catch(e){}
     const open=(url:string)=>{ try{ if(w) w.location=url; else window.open(url,'_blank'); }catch(e){} };
     const libUrl=host+(sp+IQ_QUOTES_REL).replace(/ /g,'%20');
     const cached=this._quoteFolderCache[quoteNo]; if(cached){ open(cached); this.setStatus('Opened quote folder.'); return; }
     const parentRel=(sp+IQ_QUOTES_REL).replace(/ /g,'%20');
     const u=base+"/_api/web/GetFolderByServerRelativeUrl('"+parentRel.replace(/'/g,"''")+"')/Folders?$select=Name,ServerRelativeUrl&$filter=startswith(Name,'"+quoteNo.replace(/'/g,"''")+"')&$top=1";
-    this.spGet(u).then((d:any)=>{ const v=(d&&d.value)||[]; if(v.length){ const fu=host+v[0].ServerRelativeUrl; self._quoteFolderCache[quoteNo]=fu; open(fu); self.setStatus('Opened quote folder for '+quoteNo); } else { open(libUrl); self.setStatus('Quote folder for '+quoteNo+' not found â opened the Quotes library.'); } }).catch(()=>{ open(libUrl); });
+    this.spGet(u).then((d:any)=>{ const v=(d&&d.value)||[]; if(v.length){ const fu=host+v[0].ServerRelativeUrl; self._quoteFolderCache[quoteNo]=fu; open(fu); self.setStatus('Opened quote folder for '+quoteNo); } else { open(libUrl); self.setStatus('Quote folder for '+quoteNo+' not found — opened the Quotes library.'); } }).catch(()=>{ open(libUrl); });
   }
 
   // ---- Inquiries filter panel (mirrors the Projects panel) ----
