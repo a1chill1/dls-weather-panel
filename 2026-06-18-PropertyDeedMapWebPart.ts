@@ -265,7 +265,8 @@ var UCDD_ZONING:any[]=[
   {key:'millersville',label:'Millersville',group:'sumner',url:'https://services.arcgis.com/jcrrmnzMsBOEAFJp/arcgis/rest/services/Millersville_Zoning_view/FeatureServer/5',field:'ZONE_2021',bbox:[-86.87,36.34,-86.68,36.47]},
   {key:'goodlettsville',label:'Goodlettsville',group:'sumner',url:'https://services8.arcgis.com/qSbT66zM7qttH0fv/arcgis/rest/services/ZONINGARGISMAP/FeatureServer/2',field:'ZONECLASS',bbox:[-86.75,36.27,-86.65,36.39]},
   {key:'westmoreland',label:'Westmoreland',group:'sumner',url:'https://services3.arcgis.com/pXGyp7DHTIE4RXOJ/arcgis/rest/services/Westmoreland_Zoning/FeatureServer/0',field:'Zone_Curre',bbox:[-86.31,36.53,-86.21,36.61]},
-  {key:'trousdale',label:'Hartsville / Trousdale County',group:'trousdale',url:'https://services3.arcgis.com/pXGyp7DHTIE4RXOJ/arcgis/rest/services/Hartsville_Trousdale_Zoning/FeatureServer/0',field:'Zoning_Cur',bbox:[-86.29,36.29,-85.97,36.49]}
+  {key:'hartsville',label:'Hartsville',group:'trousdale',url:'https://services3.arcgis.com/pXGyp7DHTIE4RXOJ/arcgis/rest/services/Hartsville_Trousdale_Zoning/FeatureServer/0',field:'Zoning_Cur',where:"Area='City'",bbox:[-86.29,36.29,-85.97,36.49]},
+  {key:'trousdale_co',label:'Trousdale County',group:'trousdale',url:'https://services3.arcgis.com/pXGyp7DHTIE4RXOJ/arcgis/rest/services/Hartsville_Trousdale_Zoning/FeatureServer/0',field:'Zoning_Cur',where:"Area<>'City'",bbox:[-86.29,36.29,-85.97,36.49]}
 ];
 var UCDD_COLORS:any={
   smith:{'R-1':[242,223,12],'I-1':[142,4,189],'A-1':[33,222,36],'C-1':[255,0,8],'CRT':[255,136,0],'GRD':[135,72,4],'R-C':[255,0,217],'SCA':[3,255,217]},
@@ -287,7 +288,8 @@ var UCDD_COLORS:any={
   millersville:{'NC':[253,127,111],'O':[255,0,197],'MXC':[255,170,0],'GC':[230,0,0],'HC':[169,0,230],'RR':[40,184,67],'ER':[162,255,31],'SR-1':[255,255,0],'SR-2':[230,152,0],'THR':[66,99,0],'MXR':[183,129,74],'MFR':[115,38,0],'I':[0,112,255],'PD':[153,153,153],'H':[26,26,26]},
   goodlettsville:{'A':[252,225,207],'CC':[215,252,199],'CG':[179,193,252],'CPUD':[215,252,252],'CPUDL':[252,207,192],'CS':[194,179,252],'CSL':[182,252,232],'GOPUD':[179,252,187],'HDRPUD':[252,227,184],'IC':[252,182,218],'IG':[210,252,220],'IR':[182,243,252],'LDRPUD':[252,188,182],'MDRPUD':[192,252,204],'NMOVRLY':[251,252,179],'OP':[219,252,182],'R10':[252,179,196],'R15':[184,210,252],'R25':[252,251,212],'R40':[236,202,252],'R7':[222,212,252],'RC1PUD':[215,234,252],'RLSPUD':[252,215,230],'ROPUD':[251,182,252]},
   westmoreland:{'R1':[0,38,115],'R2':[252,146,31],'C1':[237,81,81],'C2':[20,158,206],'I1':[56,168,0]},
-  trousdale:{'A1':[255,255,255],'R1':[255,255,190],'R2':[255,255,0],'R3':[255,170,0],'C1':[255,0,0],'C2':[255,190,190],'M1':[232,190,255],'M2':[76,0,115],'I1':[169,0,230]}
+  hartsville:{'A1':[255,255,255],'R1':[255,255,190],'R2':[255,255,0],'R3':[255,170,0],'C1':[255,0,0],'C2':[255,190,190],'I1':[169,0,230]},
+  trousdale_co:{'A1':[255,255,255],'R1':[255,255,190],'R2':[255,255,0],'C1':[255,0,0],'C2':[255,190,190],'M1':[232,190,255],'M2':[76,0,115]}
 };
 var UCDD_FALLBACK=['#e6194B','#3cb44b','#ffe119','#4363d8','#f58231','#911eb4','#42d4f4','#f032e6','#bfef45','#469990'];
 function ucddRgbaArr(a:any,al:number){ return 'rgba('+a[0]+','+a[1]+','+a[2]+','+al+')'; }
@@ -316,7 +318,8 @@ var UCDD_NAMES:any={
   millersville:{'NC':'Neighborhood Commercial','O':'Office','MXC':'Mixed Commercial','GC':'General Commercial','HC':'Heavy Commercial','RR':'Rural Residential','ER':'Estate Residential','SR-1':'Suburban Residential 1','SR-2':'Suburban Residential 2','THR':'Townhome Residential','MXR':'Mixed Residential','MFR':'Multi-Family Residential','I':'Industrial','PD':'Planned Development','H':'Historic and Landmarks'},
   goodlettsville:{'A':'Agricultural','CC':'Commercial Core','CG':'Commercial General','CPUD':'Commercial Planned Unit Development','CPUDL':'Commercial Planned Unit Development Limited','CS':'Commercial Services','CSL':'Commercial Services Limited','GOPUD':'General Office Planned Unit Development','HDRPUD':'High Density Residential Planned Unit Development','IC':'Industrial Commercial','IG':'Industrial General','IR':'Industrial Restricted','LDRPUD':'Low Density Residential Planned Unit Development','MDRPUD':'Medium Density Residential Planned Unit Development','NMOVRLY':'North Main Street Overlay District','OP':'Office Professional','R10':'Medium Density Residential','R15':'Medium Density Residential','R25':'Low Density Residential','R40':'Low Density Residential','R7':'High Density Residential','RC1PUD':'Regional Center Planned Unit Development High Intensity','RLSPUD':'Residential Limited Scale Planned Unit Development','ROPUD':'Restricted Office Planned Unit Development'},
   westmoreland:{'R1':'Low Density Residential','R2':'Medium Density Residential','C1':'Central Business','C2':'Highway Service','I1':'General Industrial'},
-  trousdale:{'A1':'Agricultural','R1':'Low Density Residential','R2':'Medium Density Residential','R3':'High Density Residential','C1':'Central Commercial','C2':'Highway Commercial','M1':'General Industrial District','M2':'Intermediate Impact Industrial District','I1':'General Industrial'}
+  hartsville:{'A1':'Agricultural','R1':'Low Density Residential','R2':'Medium Density Residential','R3':'High Density Residential','C1':'Central Commercial','C2':'Highway Commercial','I1':'General Industrial'},
+  trousdale_co:{'A1':'Agriculture-Forestry','R1':'Residential','R2':'Residential','C1':'General Commercial','C2':'Highway Commercial','M1':'General Industrial District','M2':'Intermediate Impact Industrial District'}
 };
 function ucddName(key:string,code:any){ var z=(code==null?'':(''+code)).toUpperCase(); var m=UCDD_NAMES[key]||{}; return m[z]||''; }
 // point-in-polygon: is [lng,lat] inside a GeoJSON feature (Polygon/MultiPolygon, honoring holes)? Reuses pointInRing.
@@ -1335,7 +1338,7 @@ for(var k=0;k<UCDD_ZONING.length;k++){ var uu=UCDD_ZONING[k]; var ufe=this._ucdd
     var seq= ++this._ucddSeq; var cache:any={}; var tmp:any[]=[]; var tot=0; var pending=on.length; var commit=function(){ if(self._ucddSeq!==seq) return; self._ucddCache=cache; self.ucddLayer.clearLayers(); for(var ti=0;ti<tmp.length;ti++){ self.ucddLayer.addLayer(tmp[ti]); } self._ucddCount=tot; self.buildLegend(); };
     for(var k2=0;k2<on.length;k2++){
       (function(c:any){
-        var url=(c.url?c.url:(UCDD_BASE+'/'+c.service+'/FeatureServer/'+c.layer))+'/query?'+qs({where:'1=1',geometry:env,geometryType:'esriGeometryEnvelope',inSR:4326,spatialRel:'esriSpatialRelIntersects',outFields:c.field,returnGeometry:true,outSR:4326,maxAllowableOffset:off,geometryPrecision:6,resultRecordCount:2000,f:'json'});
+        var url=(c.url?c.url:(UCDD_BASE+'/'+c.service+'/FeatureServer/'+c.layer))+'/query?'+qs({where:(c.where?c.where:'1=1'),geometry:env,geometryType:'esriGeometryEnvelope',inSR:4326,spatialRel:'esriSpatialRelIntersects',outFields:c.field,returnGeometry:true,outSR:4326,maxAllowableOffset:off,geometryPrecision:6,resultRecordCount:2000,f:'json'});
         self.arcgisFetch(url).then(function(d:any){ if(self._ucddSeq===seq && d && !d.error){ var feats=esriToFeatures(d); cache[c.key]=feats; var lyr=L.geoJSON(feats,{pane:'ucdd',renderer:self._ucddRenderer,style:function(ft:any){ return {color:'#444',weight:0.4,fillColor:ucddColor(c.key,ft.properties[c.field]),fillOpacity:0.55}; }}); tmp.push(lyr); tot+=feats.length; } pending--; if(pending<=0) commit(); }).catch(function(){ pending--; if(pending<=0) commit(); });
       })(on[k2]);
     }
