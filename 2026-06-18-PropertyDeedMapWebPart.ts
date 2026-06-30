@@ -479,7 +479,7 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
   private workedByPin:any={}; private workView=false; private workEdit=false; private wTarget:any=null; private _collW=false; private _workLoaded=false; private workedWipIds:any={}; private _workCount=0; private _workUnresolved=0; private _wipPick:any[]=[]; private _workColorMode:string='flat'; private pWorkYearOn:any={};
   private selFeat:any=null; private selN:any=null; private selLayer:any=null; private labelLayer:any=null; private workedGeomLayer:any=null; private _workGeomLoaded=false; private _folderCache:any={}; private _printMap:any=null;
   private splitState:any=null; private splitLayer:any=null; private splitTmp:any[]=[]; private splitMarkers:any[]=[]; private _splitClick:any=null; private _splitDrawPopup:any=null;
-  private femaLayer:any=null; private _femaOn=false; private areasLayer:any=null; private _areasRenderer:any=null; private areas:any[]=[]; private _areasOn=false;
+  private femaLayer:any=null; private _femaOn=false; private contourLayer:any=null; private _contourOn=false; private wetlandLayer:any=null; private _wetlandOn=false; private areasLayer:any=null; private _areasRenderer:any=null; private areas:any[]=[]; private _areasOn=false;
   private ucddLayer:any=null; private _ucddSeq=0; private _ucddCount=0; private _ucddBounds:any=null; private _ucddZoom:number=-1; private _ucddCache:any={}; private _ucddRenderer:any=null;
   private areaState:any=null; private areaMarkers:any[]=[]; private areaLine:any=null; private _areaClick:any=null;
   private projects:any[]=[]; private projectLayer:any=null; private _projRenderer:any=null; private _projOn=false; private _projLoaded=false;
@@ -730,11 +730,11 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
 
   private buildMap(): void {
     const mapEl = this.domElement.querySelector('#map');
-    this.map = L.map(mapEl,{minZoom:6,maxZoom:20}).setView([36.521,-86.029],16);
+    this.map = L.map(mapEl,{minZoom:6,maxZoom:20,preferCanvas:true}).setView([36.521,-86.029],16);
     this.bases = {
       aerial: L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',{maxZoom:20,attribution:'Imagery © Esri'}),
       streets: L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}',{maxZoom:20,attribution:'© Esri'}),
-      topo: L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}',{maxZoom:20,attribution:'© Esri'})
+      topo: L.tileLayer('https://basemap.nationalmap.gov/arcgis/rest/services/USGSTopo/MapServer/tile/{z}/{y}/{x}',{maxZoom:20,maxNativeZoom:16,attribution:'USGS The National Map'})
     };
     this.bases.streets.addTo(this.map);
     this.labels = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}',{maxZoom:20,opacity:.9});
@@ -751,6 +751,9 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
     this.inqLayer = L.layerGroup().addTo(this.map);
     const FemaTiles:any = L.TileLayer.extend({ getTileUrl:function(coords:any){ const map=this._map; const ts=this.getTileSize(); const nw=map.unproject(L.point(coords.x*ts.x,coords.y*ts.y),coords.z); const se=map.unproject(L.point((coords.x+1)*ts.x,(coords.y+1)*ts.y),coords.z); const a=L.CRS.EPSG3857.project(nw), b=L.CRS.EPSG3857.project(se); const bbox=Math.min(a.x,b.x)+','+Math.min(a.y,b.y)+','+Math.max(a.x,b.x)+','+Math.max(a.y,b.y); return 'https://hazards.fema.gov/arcgis/rest/services/public/NFHL/MapServer/export?bbox='+bbox+'&bboxSR=3857&imageSR=3857&size='+ts.x+','+ts.y+'&dpi=96&format=png32&transparent=true&f=image'; } });
     this.femaLayer = new FemaTiles('', {tileSize:256, opacity:0.55, pane:'zoning', maxZoom:20, attribution:'Flood data © FEMA NFHL'});
+    const ExportTiles:any = L.TileLayer.extend({ getTileUrl:function(coords:any){ const map=this._map; const ts=this.getTileSize(); const nw=map.unproject(L.point(coords.x*ts.x,coords.y*ts.y),coords.z); const se=map.unproject(L.point((coords.x+1)*ts.x,(coords.y+1)*ts.y),coords.z); const a=L.CRS.EPSG3857.project(nw), b=L.CRS.EPSG3857.project(se); const bbox=Math.min(a.x,b.x)+','+Math.min(a.y,b.y)+','+Math.max(a.x,b.x)+','+Math.max(a.y,b.y); return this.options.exportBase+'?bbox='+bbox+'&bboxSR=3857&imageSR=3857&size='+ts.x+','+ts.y+'&dpi=96&format=png32&transparent=true&f=image'; } });
+    this.contourLayer = new ExportTiles('', {exportBase:'https://carto.nationalmap.gov/arcgis/rest/services/contours/MapServer/export', tileSize:256, opacity:0.70, pane:'zoning', maxZoom:20, attribution:'Contours © USGS 3DEP'});
+    this.wetlandLayer = new ExportTiles('', {exportBase:'https://fwsprimary.wim.usgs.gov/server/rest/services/Wetlands/MapServer/export', tileSize:256, opacity:0.60, pane:'zoning', maxZoom:20, attribution:'Wetlands © USFWS NWI'});
     ZJURS.forEach((j:any)=>{ j._layer = L.imageOverlay(this.zoningAssetBase+j.file, j.bounds, {opacity:j.opacity, interactive:false, pane:'zoning'}); j._on = false; });
     this.map.createPane('worked'); this.map.getPane('worked').style.zIndex='470';
     this.map.createPane('sel'); this.map.getPane('sel').style.zIndex='480'; this.map.getPane('sel').style.pointerEvents='none';
@@ -1418,6 +1421,8 @@ for(var k=0;k<UCDD_ZONING.length;k++){ var uu=UCDD_ZONING[k]; var ufe=this._ucdd
     h+='</div></div>';
     h+='<div class="zdiv"></div><div class="zjh">Other layers</div>';
     h+='<div class="zrow"><label><input type="checkbox" id="zfema"'+(this._femaOn?' checked':'')+'> FEMA flood (NFHL)</label><span class="zacc exact">live</span><input type="range" min="20" max="100" value="'+(this.femaLayer&&this.femaLayer.options?Math.round(this.femaLayer.options.opacity*100):55)+'" id="zfemaop"></div>';
+    h+='<div class="zrow"><label><input type="checkbox" id="zcont"'+(this._contourOn?' checked':'')+'> USGS contours (elevation)</label><span class="zacc exact">live</span><input type="range" min="20" max="100" value="'+(this.contourLayer&&this.contourLayer.options?Math.round(this.contourLayer.options.opacity*100):70)+'" id="zcontop"></div>';
+    h+='<div class="zrow"><label><input type="checkbox" id="zwet"'+(this._wetlandOn?' checked':'')+'> USFWS wetlands (NWI)</label><span class="zacc exact">live</span><input type="range" min="20" max="100" value="'+(this.wetlandLayer&&this.wetlandLayer.options?Math.round(this.wetlandLayer.options.opacity*100):60)+'" id="zwetop"></div>';
     h+='<div class="zrow"><label><input type="checkbox" id="zareas"'+(this._areasOn?' checked':'')+'> Drawn areas (historic dist.)</label></div>';
     h+='<button class="zbtn2" id="zdrawarea" style="margin-top:4px">Draw an area&hellip;</button>';
     h+='<div class="zdisc">Local tags are colored by district; UCDD layers are official &amp; live. Use "Show" to toggle each entity. Reference only &mdash; confirm zoning with the city/county.</div>';
@@ -1429,6 +1434,10 @@ for(var k=0;k<UCDD_ZONING.length;k++){ var uu=UCDD_ZONING[k]; var ufe=this._ucdd
     const lh=el.querySelector('[data-leg] .lp-subhd') as any; if(lh) lh.addEventListener('click',function(){ self._collLegend=!self._collLegend; if(this.parentNode) this.parentNode.classList.toggle('coll'); });
     const fm=el.querySelector('#zfema') as any; if(fm) fm.addEventListener('change',function(e:any){ self._femaOn=!!e.target.checked; self.applyFema(); });
     const fo=el.querySelector('#zfemaop') as any; if(fo) fo.addEventListener('input',function(e:any){ if(self.femaLayer) self.femaLayer.setOpacity((+e.target.value)/100); });
+    const cm=el.querySelector('#zcont') as any; if(cm) cm.addEventListener('change',function(e:any){ self._contourOn=!!e.target.checked; self.applyContour(); });
+    const co=el.querySelector('#zcontop') as any; if(co) co.addEventListener('input',function(e:any){ if(self.contourLayer) self.contourLayer.setOpacity((+e.target.value)/100); });
+    const wm=el.querySelector('#zwet') as any; if(wm) wm.addEventListener('change',function(e:any){ self._wetlandOn=!!e.target.checked; self.applyWetland(); });
+    const wo=el.querySelector('#zwetop') as any; if(wo) wo.addEventListener('input',function(e:any){ if(self.wetlandLayer) self.wetlandLayer.setOpacity((+e.target.value)/100); });
     const ar=el.querySelector('#zareas') as any; if(ar) ar.addEventListener('change',function(e:any){ self._areasOn=!!e.target.checked; self.buildAreasLayer(); });
     const da=el.querySelector('#zdrawarea') as any; if(da) da.addEventListener('click',function(){ self.startAreaDraw(); });
   }
@@ -1916,6 +1925,10 @@ for(var k=0;k<UCDD_ZONING.length;k++){ var uu=UCDD_ZONING[k]; var ufe=this._ucdd
   private apiList(title:string): string { return this.context.pageContext.web.absoluteUrl + "/_api/web/lists/getbytitle('" + title.replace(/'/g,"''") + "')"; }
 
   private applyFema(): void { if(!this.femaLayer) return; if(this._femaOn && this.zoningView){ if(!this.map.hasLayer(this.femaLayer)){ this.femaLayer.addTo(this.map); } } else if(this.map.hasLayer(this.femaLayer)){ this.map.removeLayer(this.femaLayer); } }
+
+  private applyContour(): void { if(!this.contourLayer) return; if(this._contourOn){ if(!this.map.hasLayer(this.contourLayer)){ this.contourLayer.addTo(this.map); } } else if(this.map.hasLayer(this.contourLayer)){ this.map.removeLayer(this.contourLayer); } }
+
+  private applyWetland(): void { if(!this.wetlandLayer) return; if(this._wetlandOn){ if(!this.map.hasLayer(this.wetlandLayer)){ this.wetlandLayer.addTo(this.map); } } else if(this.map.hasLayer(this.wetlandLayer)){ this.map.removeLayer(this.wetlandLayer); } }
 
   private loadAreas(): void {
     this.spGet(this.apiList('DLS Map Areas')+'/items?$select=Id,AreaType,Jurisdiction,AreaGeoJSON&$top=2000').then((d:any)=>{
