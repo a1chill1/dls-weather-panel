@@ -522,7 +522,7 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
   private workedByPin:any={}; private workView=false; private workEdit=false; private wTarget:any=null; private _collW=false; private _workLoaded=false; private workedWipIds:any={}; private _workCount=0; private _workUnresolved=0; private _wipPick:any[]=[]; private _workColorMode:string='flat'; private pWorkYearOn:any={};
   private selFeat:any=null; private selN:any=null; private selLayer:any=null; private labelLayer:any=null; private workedGeomLayer:any=null; private _workGeomLoaded=false; private _folderCache:any={}; private _printMap:any=null;
   private splitState:any=null; private splitLayer:any=null; private splitTmp:any[]=[]; private splitMarkers:any[]=[]; private _splitClick:any=null; private _splitDrawPopup:any=null;
-  private femaLayer:any=null; private _femaOn=false; private contourLayer:any=null; private _contourOn=false; private wetlandLayer:any=null; private _wetlandOn=false; private areasLayer:any=null; private _areasRenderer:any=null; private areas:any[]=[]; private _areasOn=false; private roadLayer:any=null; private _roadOn=false; private _roadSeq=0; private _roadBounds:any=null; private _roadZoom:number=-1; private _roadRenderer:any=null; private _roadCount=0;
+  private femaLayer:any=null; private _femaOn=false; private contourLayer:any=null; private _contourOn=false; private wetlandLayer:any=null; private _wetlandOn=false; private areasLayer:any=null; private _areasRenderer:any=null; private areas:any[]=[]; private _areasOn=false; private roadLayer:any=null; private _roadOn=false; private _roadSeq=0; private _roadBounds:any=null; private _roadZoom:number=-1; private _roadRenderer:any=null;
   private ucddLayer:any=null; private _ucddSeq=0; private _ucddCount=0; private _ucddBounds:any=null; private _ucddZoom:number=-1; private _ucddCache:any={}; private _ucddRenderer:any=null;
   private areaState:any=null; private areaMarkers:any[]=[]; private areaLine:any=null; private _areaClick:any=null;
   private projects:any[]=[]; private projectLayer:any=null; private _projRenderer:any=null; private _projOn=false; private _projLoaded=false;
@@ -1991,7 +1991,7 @@ for(var k=0;k<UCDD_ZONING.length;k++){ var uu=UCDD_ZONING[k]; var ufe=this._ucdd
     var seq= ++this._roadSeq;
     this.arcgisFetch(url).then(function(d:any){ if(self._roadSeq!==seq) return; if(!d||d.error) return; var feats:any=esriLinesToFeatures(d); var drawn:any[]=[];
       for(var i=0;i<feats.length;i++){ var p:any=feats[i].properties; var cty:any=(''+(p.NBR_TENN_CNTY||'')).toLowerCase(); var rs:any=rsLookup(cty,p.RTE_NME); if(!rs && /State/.test(''+(p.GOVT_CTRL||''))){ rs={bucket:'paved'}; } if(!rs) continue; feats[i].properties.__b=rs.bucket; drawn.push(feats[i]); }
-      self.roadLayer.clearLayers(); if(drawn.length) self.roadLayer.addData(drawn); self._roadCount=drawn.length;
+      self.roadLayer.clearLayers(); if(drawn.length) self.roadLayer.addData(drawn);
     }).catch(function(){});
   }
 
