@@ -1,0 +1,92 @@
+# Place at .github/workflows/build-property-map-spfx.yml in your repo,
+# alongside 2026-06-18-PropertyDeedMapWebPart.ts.
+# Builds the DLS Property & Deed Map SPFx package and uploads the .sppkg as a download.
+# Mirrors the Coverage Map / Zoning pipeline: Leaflet BUNDLED (tenant blocks external CDN
+# scripts), Leaflet CSS inlined at build time, PINNED solution/component IDs so a rebuild
+# UPGRADES the deployed app in place. Run from the Actions tab. No secrets needed.
+name: Build Property & Deed Map SPFx package
+
+on:
+  workflow_dispatch: {}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      CI: "true"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "18.17.1"
+
+      - name: Install SPFx toolchain
+        run: npm install -g gulp-cli yo@4.3.1 @microsoft/generator-sharepoint@1.18.2
+
+      - name: Scaffold a clean SPFx solution
+        run: |
+          yo @microsoft/sharepoint \
+            --solution-name "dls-property-map" \
+            --component-type webpart \
+            --component-name "PropertyDeedMap" \
+            --component-description "DLS Property & Deed Map" \
+            --framework none \
+            --skip-install true \
+            --no-insight
+          ls -la dls-property-map/src/webparts/propertyDeedMap/ || true
+
+      - name: Inject the Property & Deed Map web part code
+        run: cp 2026-06-18-PropertyDeedMapWebPart.ts dls-property-map/src/webparts/propertyDeedMap/PropertyDeedMapWebPart.ts
+
+      - name: Pin solution + component IDs (upgrade in place) and set version
+        run: |
+          cd dls-property-map
+          python3 - << 'PY'
+          import json, glob, re
+          ps = 'config/package-solution.json'
+          d = json.load(open(ps, encoding='utf-8'))
+          d['solution']['id'] = '9a4c2e18-7b3d-4f6a-8c12-5e9d7a1b3c40'
+          d['solution']['version'] = '1.0.0.49'
+          json.dump(d, open(ps, 'w', encoding='utf-8'), indent=2)
+          mf = glob.glob('src/webparts/propertyDeedMap/*.manifest.json')[0]
+          t = open(mf, encoding='utf-8').read()
+          t2 = re.sub(r'("id"\s*:\s*")[0-9a-fA-F-]{36}(")',
+                      r'\g<1>4f8b1d62-3a57-4c9e-b8d1-6c2a9e3f7b50\g<2>', t, count=1)
+          assert t2 != t, 'manifest component id not found/replaced'
+          open(mf, 'w', encoding='utf-8').write(t2)
+          print('Pinned solution id+version in', ps, 'and component id in', mf)
+          PY
+
+      - name: Install dependencies (incl. bundled Leaflet)
+        run: |
+          cd dls-property-map
+          npm install
+          npm install leaflet@1.9.4 @types/leaflet --save --legacy-peer-deps
+          npm install @microsoft/sp-http@1.18.2 --save --legacy-peer-deps
+
+      - name: Build + package (ship)
+        run: |
+          cd dls-property-map
+          gulp bundle --ship
+          gulp package-solution --ship
+          ls -la sharepoint/solution/
+
+      - name: Upload the .sppkg
+        uses: actions/upload-artifact@v4
+        with:
+          name: dls-property-map-sppkg
+          path: dls-property-map/sharepoint/solution/*.sppkg
+          if-no-files-found: error
+
+      - name: Commit the .sppkg into dist/ (for direct retrieval)
+        run: |
+          mkdir -p dist
+          cp dls-property-map/sharepoint/solution/*.sppkg dist/dls-property-map.sppkg
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -f dist/dls-property-map.sppkg
+          git commit -m "build: property map sppkg v1.0.0.49 [skip ci]" || echo "nothing to commit"
+          for i in 1 2 3 4 5; do git pull --rebase origin main && git push && break || sleep 5; done

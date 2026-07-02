@@ -293,7 +293,7 @@ function rsStreet(a:any){ if(!a) return ''; var t:any=(''+a).trim().split(/\s+/)
 // ---- UCDD (Upper Cumberland Development District) official zoning overlay (added 2026-06-27) ----
 var UCDD_BASE='https://services1.arcgis.com/EMZFDxQzNQloLbAf/arcgis/rest/services';
 var UCDD_MINZOOM=14;
-var UCDD_ZONING:any[]=[
+var ZONING_LAYERS:any[]=[
   {key:'smith',label:'Smith County',service:'Smith_Zoning',layer:0,field:'ZONE',bbox:[-86.2205,36.0193,-85.6925,36.4668]},
   {key:'smithville',label:'Smithville',service:'Smithville_Zoning',layer:0,field:'Zone',bbox:[-85.9373,35.9095,-85.6961,36.0233]},
   {key:'south_carthage',label:'South Carthage',service:'South_Carthage_Zoning',layer:0,field:'Zone',bbox:[-86.0207,36.2134,-85.9001,36.2701]},
@@ -305,53 +305,53 @@ var UCDD_ZONING:any[]=[
   {key:'cannon',label:'Cannon County',service:'Cannon_Zoning_250708',layer:0,field:'Zone',bbox:[-86.7203,35.5340,-85.4377,36.0963]},
   {key:'monterey',label:'Monterey',service:'Monterey_Zoning_WFL1',layer:3,field:'Zone_Curre',bbox:[-85.2918,36.1273,-85.2308,36.1554]},
   {key:'spencer',label:'Spencer',service:'Spencer_Zoning_260205',layer:0,field:'ZONE',bbox:[-85.5568,35.6749,-85.3449,35.7994]},
-  {key:'sumner_co',label:'Sumner County (unincorp.)',group:'sumner',url:'https://services5.arcgis.com/I2fcoygeHRmx0WzS/arcgis/rest/services/PSALayers/FeatureServer/20',field:'ZONING',bbox:[-86.76,36.24,-86.20,36.66]},
-  {key:'gallatin',label:'Gallatin',group:'sumner',url:'https://arcweb.gallatin-tn.gov/arcgis/rest/services/Features/Zoning/FeatureServer/0',field:'ZONING',bbox:[-86.58,36.30,-86.40,36.46]},
-  {key:'hendersonville',label:'Hendersonville',group:'sumner',url:'https://gis.hvilletn.org/gisapi/rest/services/HvilleTN_Zoning_UPDATED/MapServer/3',field:'ZONECODE',bbox:[-86.70,36.26,-86.54,36.40]},
-  {key:'whitehouse',label:'White House',group:'sumner',url:'https://gis.cityofwhitehouse.com/arcgis/rest/services/WhiteHouseTN_Zoning/FeatureServer/3',field:'ZONECLASS',bbox:[-86.78,36.43,-86.60,36.53]},
-  {key:'portland',label:'Portland',group:'sumner',url:'https://services3.arcgis.com/pXGyp7DHTIE4RXOJ/arcgis/rest/services/Zoning_Portland/FeatureServer/0',field:'ZQ45T',bbox:[-86.55,36.55,-86.47,36.61]},
-  {key:'millersville',label:'Millersville',group:'sumner',url:'https://services.arcgis.com/jcrrmnzMsBOEAFJp/arcgis/rest/services/Millersville_Zoning_view/FeatureServer/5',field:'ZONE_2021',bbox:[-86.87,36.34,-86.68,36.47]},
-  {key:'goodlettsville',label:'Goodlettsville',group:'sumner',url:'https://services8.arcgis.com/qSbT66zM7qttH0fv/arcgis/rest/services/ZONINGARGISMAP/FeatureServer/2',field:'ZONECLASS',bbox:[-86.75,36.27,-86.65,36.39]},
-  {key:'westmoreland',label:'Westmoreland',group:'sumner',url:'https://services3.arcgis.com/pXGyp7DHTIE4RXOJ/arcgis/rest/services/Westmoreland_Zoning/FeatureServer/0',field:'Zone_Curre',bbox:[-86.31,36.53,-86.21,36.61]},
-  {key:'hartsville',label:'Hartsville',group:'trousdale',url:'https://services3.arcgis.com/pXGyp7DHTIE4RXOJ/arcgis/rest/services/Hartsville_Trousdale_Zoning/FeatureServer/0',field:'Zoning_Cur',where:"Area='City'",bbox:[-86.29,36.29,-85.97,36.49]},
-  {key:'trousdale_co',label:'Trousdale County',group:'trousdale',url:'https://services3.arcgis.com/pXGyp7DHTIE4RXOJ/arcgis/rest/services/Hartsville_Trousdale_Zoning/FeatureServer/0',field:'Zoning_Cur',where:"Area<>'City'",bbox:[-86.29,36.29,-85.97,36.49]},
-  {key:'wilson_co',label:'Wilson County (unincorp.)',group:'wilson',url:'https://services2.arcgis.com/0lW6bjFI0RIjy5uB/arcgis/rest/services/Wilson_Zoning/FeatureServer/9',field:'P_Zoning',bbox:[-86.63,35.93,-86.00,36.38],where:"P_Zoning NOT IN ('000','Lebanon','Watertown','Mount Juliet')"},
-  {key:'lebanon',label:'Lebanon',group:'wilson',url:'https://maps.lebanontn.org/arcgis/rest/services/ROKMAPS/CityOfLebanon/MapServer/299',field:'ZONE',bbox:[-86.48,36.15,-86.24,36.33]},
-  {key:'mtjuliet',label:'Mt. Juliet',group:'wilson',url:'https://utility.arcgis.com/usrsvcs/servers/5e2f5bfd27984da89b2e45a726d0e37b/rest/services/Planning___Zoning/FeatureServer/5',field:'Zone_Curre',bbox:[-86.59,36.10,-86.43,36.30]},
-  {key:'watertown',label:'Watertown',group:'wilson',url:'https://services2.arcgis.com/0lW6bjFI0RIjy5uB/arcgis/rest/services/Watertown/FeatureServer/0',field:'ZONING',bbox:[-86.18,36.08,-86.11,36.12]},
-  {key:'sparta',label:'Sparta',group:'white',url:'https://services1.arcgis.com/BCClpxLWXot5hNxn/arcgis/rest/services/Official_Zoning/FeatureServer/3',field:'Zone_Current',bbox:[-85.5,35.9,-85.44,35.97]},
-  {key:'cookeville',label:'Cookeville',group:'putnam',url:'https://gis.cookeville-tn.org/arcgis/rest/services/Planning/Zoning/MapServer/4',field:'zoneclass',bbox:[-85.6,36.08,-85.44,36.21]},
-  {key:'robertson_co',label:'Robertson County (unincorp.)',group:'robertson',url:'https://apnsgis4.apsu.edu/arcgis/rest/services/Robertson/RobertsonPlanningZoning/MapServer/9',field:'zoning_1',bbox:[-87.16,36.34,-86.56,36.66]},
-  {key:'springfield',label:'Springfield',group:'robertson',url:'https://services6.arcgis.com/OvhYC4wRuXsRGdB3/arcgis/rest/services/Springfield_Current_Zoning/FeatureServer',field:'Zoning',layers:[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22],bbox:[-86.95,36.44,-86.81,36.56]},
-  {key:'greenbrier',label:'Greenbrier',group:'robertson',url:'https://services3.arcgis.com/2J1sItLsWSeMbkZB/arcgis/rest/services/Zoning-_View/FeatureServer/0',field:'ZoneCode',bbox:[-86.83,36.39,-86.77,36.46]},
-  {key:'coopertown',label:'Coopertown',group:'robertson',url:'https://services3.arcgis.com/pXGyp7DHTIE4RXOJ/arcgis/rest/services/Coopertown_Zoning/FeatureServer/0',field:'CURRENT_',bbox:[-87.06,36.35,-86.87,36.48]},
-  {key:'cross_plains',label:'Cross Plains',group:'robertson',url:'https://apnsgis4.apsu.edu/arcgis/rest/services/Robertson/RobertsonViewer/MapServer/2',field:'zone_abbr',bbox:[-86.75,36.5,-86.62,36.59]},
-  {key:'adams_tn',label:'Adams',group:'robertson',url:'https://apnsgis4.apsu.edu/arcgis/rest/services/Robertson/RobertsonPlanningZoning/MapServer/6',field:'zoning_1',bbox:[-87.09,36.56,-87.03,36.61]},
-  {key:'cedar_hill',label:'Cedar Hill',group:'robertson',url:'https://apnsgis4.apsu.edu/arcgis/rest/services/Robertson/RobertsonPlanningZoning/MapServer/7',field:'zone',bbox:[-87.02,36.54,-86.99,36.57]},
-  {key:'orlinda',label:'Orlinda',group:'robertson',url:'https://apnsgis4.apsu.edu/arcgis/rest/services/Robertson/RobertsonPlanningZoning/MapServer/8',field:'zoning',bbox:[-86.77,36.57,-86.58,36.63]},
-  {key:'ridgetop',label:'Ridgetop',group:'robertson',url:'https://services3.arcgis.com/6OJz77YZDurMzWyT/arcgis/rest/services/Zoning_view/FeatureServer/0',field:'ZoningClass',bbox:[-86.8,36.38,-86.74,36.43]},
-  {key:'franklin',label:'Franklin',group:'williamson',url:'https://publicmaps.franklintn.gov/arcgis/rest/services/Maps/ZoningWebMercator/MapServer/9',field:'ZONECLASS',bbox:[-86.97,35.86,-86.78,36.02]},
-  {key:'rutherford',label:'Rutherford County',group:'rutherford',url:'https://maps.rutherfordcountytn.gov/server/rest/services/Planning/Planning_Zoning_Subdivisions/MapServer/2',field:'ZONEABBRV',where:"ZONEABBRV IS NOT NULL AND ZONEABBRV<>'CITY'",bbox:[-86.62,35.65,-86.21,36.05]},
-  {key:'montgomery',label:'Montgomery County / Clarksville',group:'montgomery',url:'https://apnsgis4.apsu.edu/arcgis/rest/services/CMCGIS/MontViewer/FeatureServer/3',field:'zoning',bbox:[-87.55,36.32,-87.05,36.71]},
-  {key:'dickson_co',label:'Dickson County',group:'dickson',url:'https://services3.arcgis.com/pXGyp7DHTIE4RXOJ/arcgis/rest/services/DicksonCo_Zoning/FeatureServer/0',field:'Zone_Curre',bbox:[-87.55,36.00,-87.07,36.35]},
-  {key:'burns',label:'Burns',group:'dickson',url:'https://services3.arcgis.com/pXGyp7DHTIE4RXOJ/arcgis/rest/services/Burns_Zoning/FeatureServer/1',field:'Zoning_Cur',bbox:[-87.40,36.02,-87.27,36.12]},
-  {key:'charlotte',label:'Charlotte',group:'dickson',url:'https://services3.arcgis.com/pXGyp7DHTIE4RXOJ/arcgis/rest/services/Charlotte_Zoning/FeatureServer/0',field:'Zone_Curre',bbox:[-87.36,36.16,-87.30,36.20]},
-  {key:'kingston_springs',label:'Kingston Springs',group:'cheatham',url:'https://apnsgis4.apsu.edu/arcgis/rest/services/Cheatham/CheatGIS/MapServer/19',field:'zoneid',bbox:[-87.13,36.08,-87.07,36.13]},
-  {key:'simpson_franklin',label:'Simpson Co / Franklin KY',group:'kentucky',url:'https://services8.arcgis.com/D3RgmiBYTvYcNK2j/arcgis/rest/services/ZONING_2020_view/FeatureServer/0',field:'Zone_ID',bbox:[-86.70,36.62,-86.40,36.86]},
-  {key:'davidson',label:'Metro Nashville (Davidson)',group:'davidson',url:'https://maps.nashville.gov/arcgis/rest/services/Zoning_Landuse/Zoning/MapServer/14',field:'ZONE_DESC',bbox:[-87.05,35.97,-86.51,36.41]},
-  {key:'williamson',label:'Williamson County',group:'williamson',url:'https://services8.arcgis.com/hkhKI6Qq7rjvBjZU/arcgis/rest/services/CountyMap_gdb/FeatureServer/15',field:'LABEL',bbox:[-87.27,35.71,-86.53,36.07]},
-  {key:'cheatham_co',label:'Cheatham County',group:'cheatham',url:'https://apnsgis4.apsu.edu/arcgis/rest/services/Cheatham/CheatGIS/MapServer/21',field:'zoning',bbox:[-87.30,36.07,-86.95,36.43]},
-  {key:'ashland_city',label:'Ashland City',group:'cheatham',url:'https://apnsgis4.apsu.edu/arcgis/rest/services/Cheatham/CheatGIS/MapServer/20',field:'zoning',bbox:[-87.10,36.25,-87.02,36.31]},
-  {key:'pleasant_view',label:'Pleasant View',group:'cheatham',url:'https://apnsgis4.apsu.edu/arcgis/rest/services/Cheatham/CheatGIS/MapServer/23',field:'zoning',bbox:[-87.07,36.36,-86.98,36.43]},
-  {key:'pegram',label:'Pegram',group:'cheatham',url:'https://apnsgis4.apsu.edu/arcgis/rest/services/Cheatham/CheatGIS/MapServer/22',field:'zoning',bbox:[-87.07,36.08,-87.00,36.13]},
-  {key:'warren_bg',label:'Warren Co / Bowling Green KY',group:'kentucky',url:'https://webgis.bgky.org/server/rest/services/CCPC/CCPC_Zoning/FeatureServer/0',field:'Zoning',bbox:[-86.60,36.78,-86.30,37.10]},
-  {key:'coffee',label:'Coffee County',group:'coffee',url:'https://services5.arcgis.com/PCqaN0DanqMk18pL/arcgis/rest/services/ZONING_Coffee/FeatureServer/0',field:'ZONE_',where:"ZONE_<>' '",bbox:[-86.2795,35.289,-85.8692,35.7062]},
-  {key:'tullahoma',label:'Tullahoma',group:'coffee',url:'https://services5.arcgis.com/CCsXJ8hDZ7P0xrDc/arcgis/rest/services/Tullahoma_Interactive_Zoning_Map_12_2025_WFL1/FeatureServer/5',field:'ZONE_',bbox:[-86.2748,35.324,-86.1554,35.422]},
-  {key:'marshall',label:'Marshall County',group:'marshall',url:'https://services5.arcgis.com/PCqaN0DanqMk18pL/arcgis/rest/services/Marshall_County_Zoning/FeatureServer/0',field:'ZONE_',bbox:[-86.961,35.2534,-86.6014,35.7108]},
-  {key:'shelbyville',label:'Shelbyville',group:'bedford',url:'https://services3.arcgis.com/0Uo0Kvp9YTHRegvR/arcgis/rest/services/Shelbyville_Zoning/FeatureServer/2',field:'ZONEID',where:'ZONEID IS NOT NULL',bbox:[-86.5024,35.4432,-86.3943,35.5793]},
-  {key:'maury_zoning',label:'Maury County',group:'maury',url:'https://services7.arcgis.com/XUPcCUM3EN27beNY/arcgis/rest/services/MCParcelZonelLayer/FeatureServer/0',field:'cZoneDistr',where:"cZoneDistr<>' ' AND cZoneDistr IS NOT NULL",bbox:[-87.3543,35.4087,-86.7849,35.8502]},
-  {key:'columbia',label:'Columbia',group:'maury',url:'https://services6.arcgis.com/ubRvNDgGwwJuZMcL/arcgis/rest/services/Zoning/FeatureServer/1',field:'ZONING',where:"ZONING<>' '",bbox:[-87.1394,35.5646,-86.8872,35.7234]},
-  {key:'springhill',label:'Spring Hill',group:'maury',url:'https://services1.arcgis.com/tF0XsRR9ptiKNVW2/arcgis/rest/services/Zoning_Spring_Hill_view/FeatureServer/2',field:'Label',where:"Label<>' '",bbox:[-86.9959,35.6929,-86.8422,35.7951]}
+  {key:'sumner_co',label:'Sumner County (unincorp.)',url:'https://services5.arcgis.com/I2fcoygeHRmx0WzS/arcgis/rest/services/PSALayers/FeatureServer/20',field:'ZONING',bbox:[-86.76,36.24,-86.20,36.66]},
+  {key:'gallatin',label:'Gallatin',url:'https://arcweb.gallatin-tn.gov/arcgis/rest/services/Features/Zoning/FeatureServer/0',field:'ZONING',bbox:[-86.58,36.30,-86.40,36.46]},
+  {key:'hendersonville',label:'Hendersonville',url:'https://gis.hvilletn.org/gisapi/rest/services/HvilleTN_Zoning_UPDATED/MapServer/3',field:'ZONECODE',bbox:[-86.70,36.26,-86.54,36.40]},
+  {key:'white_house',label:'White House',url:'https://gis.cityofwhitehouse.com/arcgis/rest/services/WhiteHouseTN_Zoning/FeatureServer/3',field:'ZONECLASS',bbox:[-86.78,36.43,-86.60,36.53]},
+  {key:'portland',label:'Portland',url:'https://services3.arcgis.com/pXGyp7DHTIE4RXOJ/arcgis/rest/services/Zoning_Portland/FeatureServer/0',field:'ZQ45T',bbox:[-86.55,36.55,-86.47,36.61]},
+  {key:'millersville',label:'Millersville',url:'https://services.arcgis.com/jcrrmnzMsBOEAFJp/arcgis/rest/services/Millersville_Zoning_view/FeatureServer/5',field:'ZONE_2021',bbox:[-86.87,36.34,-86.68,36.47]},
+  {key:'goodlettsville',label:'Goodlettsville',url:'https://services8.arcgis.com/qSbT66zM7qttH0fv/arcgis/rest/services/ZONINGARGISMAP/FeatureServer/2',field:'ZONECLASS',bbox:[-86.75,36.27,-86.65,36.39]},
+  {key:'westmoreland',label:'Westmoreland',url:'https://services3.arcgis.com/pXGyp7DHTIE4RXOJ/arcgis/rest/services/Westmoreland_Zoning/FeatureServer/0',field:'Zone_Curre',bbox:[-86.31,36.53,-86.21,36.61]},
+  {key:'hartsville',label:'Hartsville',url:'https://services3.arcgis.com/pXGyp7DHTIE4RXOJ/arcgis/rest/services/Hartsville_Trousdale_Zoning/FeatureServer/0',field:'Zoning_Cur',where:"Area='City'",bbox:[-86.29,36.29,-85.97,36.49]},
+  {key:'trousdale_co',label:'Trousdale County',url:'https://services3.arcgis.com/pXGyp7DHTIE4RXOJ/arcgis/rest/services/Hartsville_Trousdale_Zoning/FeatureServer/0',field:'Zoning_Cur',where:"Area<>'City'",bbox:[-86.29,36.29,-85.97,36.49]},
+  {key:'wilson_co',label:'Wilson County (unincorp.)',url:'https://services2.arcgis.com/0lW6bjFI0RIjy5uB/arcgis/rest/services/Wilson_Zoning/FeatureServer/9',field:'P_Zoning',bbox:[-86.63,35.93,-86.00,36.38],where:"P_Zoning NOT IN ('000','Lebanon','Watertown','Mount Juliet')"},
+  {key:'lebanon',label:'Lebanon',url:'https://maps.lebanontn.org/arcgis/rest/services/ROKMAPS/CityOfLebanon/MapServer/299',field:'ZONE',bbox:[-86.48,36.15,-86.24,36.33]},
+  {key:'mt_juliet',label:'Mt. Juliet',url:'https://utility.arcgis.com/usrsvcs/servers/5e2f5bfd27984da89b2e45a726d0e37b/rest/services/Planning___Zoning/FeatureServer/5',field:'Zone_Curre',bbox:[-86.59,36.10,-86.43,36.30]},
+  {key:'watertown',label:'Watertown',url:'https://services2.arcgis.com/0lW6bjFI0RIjy5uB/arcgis/rest/services/Watertown/FeatureServer/0',field:'ZONING',bbox:[-86.18,36.08,-86.11,36.12]},
+  {key:'sparta',label:'Sparta',url:'https://services1.arcgis.com/BCClpxLWXot5hNxn/arcgis/rest/services/Official_Zoning/FeatureServer/3',field:'Zone_Current',bbox:[-85.5,35.9,-85.44,35.97]},
+  {key:'cookeville',label:'Cookeville',url:'https://gis.cookeville-tn.org/arcgis/rest/services/Planning/Zoning/MapServer/4',field:'zoneclass',bbox:[-85.6,36.08,-85.44,36.21]},
+  {key:'robertson_co',label:'Robertson County (unincorp.)',url:'https://apnsgis4.apsu.edu/arcgis/rest/services/Robertson/RobertsonPlanningZoning/MapServer/9',field:'zoning_1',bbox:[-87.16,36.34,-86.56,36.66]},
+  {key:'springfield',label:'Springfield',url:'https://services6.arcgis.com/OvhYC4wRuXsRGdB3/arcgis/rest/services/Springfield_Current_Zoning/FeatureServer',field:'Zoning',layers:[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22],bbox:[-86.95,36.44,-86.81,36.56]},
+  {key:'greenbrier',label:'Greenbrier',url:'https://services3.arcgis.com/2J1sItLsWSeMbkZB/arcgis/rest/services/Zoning-_View/FeatureServer/0',field:'ZoneCode',bbox:[-86.83,36.39,-86.77,36.46]},
+  {key:'coopertown',label:'Coopertown',url:'https://services3.arcgis.com/pXGyp7DHTIE4RXOJ/arcgis/rest/services/Coopertown_Zoning/FeatureServer/0',field:'CURRENT_',bbox:[-87.06,36.35,-86.87,36.48]},
+  {key:'cross_plains',label:'Cross Plains',url:'https://apnsgis4.apsu.edu/arcgis/rest/services/Robertson/RobertsonViewer/MapServer/2',field:'zone_abbr',bbox:[-86.75,36.5,-86.62,36.59]},
+  {key:'adams_tn',label:'Adams',url:'https://apnsgis4.apsu.edu/arcgis/rest/services/Robertson/RobertsonPlanningZoning/MapServer/6',field:'zoning_1',bbox:[-87.09,36.56,-87.03,36.61]},
+  {key:'cedar_hill',label:'Cedar Hill',url:'https://apnsgis4.apsu.edu/arcgis/rest/services/Robertson/RobertsonPlanningZoning/MapServer/7',field:'zone',bbox:[-87.02,36.54,-86.99,36.57]},
+  {key:'orlinda',label:'Orlinda',url:'https://apnsgis4.apsu.edu/arcgis/rest/services/Robertson/RobertsonPlanningZoning/MapServer/8',field:'zoning',bbox:[-86.77,36.57,-86.58,36.63]},
+  {key:'ridgetop',label:'Ridgetop',url:'https://services3.arcgis.com/6OJz77YZDurMzWyT/arcgis/rest/services/Zoning_view/FeatureServer/0',field:'ZoningClass',bbox:[-86.8,36.38,-86.74,36.43]},
+  {key:'franklin',label:'Franklin',url:'https://publicmaps.franklintn.gov/arcgis/rest/services/Maps/ZoningWebMercator/MapServer/9',field:'ZONECLASS',bbox:[-86.97,35.86,-86.78,36.02]},
+  {key:'rutherford',label:'Rutherford County',url:'https://maps.rutherfordcountytn.gov/server/rest/services/Planning/Planning_Zoning_Subdivisions/MapServer/2',field:'ZONEABBRV',where:"ZONEABBRV IS NOT NULL AND ZONEABBRV<>'CITY'",bbox:[-86.62,35.65,-86.21,36.05]},
+  {key:'montgomery',label:'Montgomery County / Clarksville',url:'https://apnsgis4.apsu.edu/arcgis/rest/services/CMCGIS/MontViewer/FeatureServer/3',field:'zoning',bbox:[-87.55,36.32,-87.05,36.71]},
+  {key:'dickson_co',label:'Dickson County',url:'https://services3.arcgis.com/pXGyp7DHTIE4RXOJ/arcgis/rest/services/DicksonCo_Zoning/FeatureServer/0',field:'Zone_Curre',bbox:[-87.55,36.00,-87.07,36.35]},
+  {key:'burns',label:'Burns',url:'https://services3.arcgis.com/pXGyp7DHTIE4RXOJ/arcgis/rest/services/Burns_Zoning/FeatureServer/1',field:'Zoning_Cur',bbox:[-87.40,36.02,-87.27,36.12]},
+  {key:'charlotte',label:'Charlotte',url:'https://services3.arcgis.com/pXGyp7DHTIE4RXOJ/arcgis/rest/services/Charlotte_Zoning/FeatureServer/0',field:'Zone_Curre',bbox:[-87.36,36.16,-87.30,36.20]},
+  {key:'kingston_springs',label:'Kingston Springs',url:'https://apnsgis4.apsu.edu/arcgis/rest/services/Cheatham/CheatGIS/MapServer/19',field:'zoneid',bbox:[-87.13,36.08,-87.07,36.13]},
+  {key:'simpson_franklin',label:'Simpson Co / Franklin KY',url:'https://services8.arcgis.com/D3RgmiBYTvYcNK2j/arcgis/rest/services/ZONING_2020_view/FeatureServer/0',field:'Zone_ID',bbox:[-86.70,36.62,-86.40,36.86]},
+  {key:'davidson',label:'Metro Nashville (Davidson)',url:'https://maps.nashville.gov/arcgis/rest/services/Zoning_Landuse/Zoning/MapServer/14',field:'ZONE_DESC',bbox:[-87.05,35.97,-86.51,36.41]},
+  {key:'williamson',label:'Williamson County',url:'https://services8.arcgis.com/hkhKI6Qq7rjvBjZU/arcgis/rest/services/CountyMap_gdb/FeatureServer/15',field:'LABEL',bbox:[-87.27,35.71,-86.53,36.07]},
+  {key:'cheatham_co',label:'Cheatham County',url:'https://apnsgis4.apsu.edu/arcgis/rest/services/Cheatham/CheatGIS/MapServer/21',field:'zoning',bbox:[-87.30,36.07,-86.95,36.43]},
+  {key:'ashland_city',label:'Ashland City',url:'https://apnsgis4.apsu.edu/arcgis/rest/services/Cheatham/CheatGIS/MapServer/20',field:'zoning',bbox:[-87.10,36.25,-87.02,36.31]},
+  {key:'pleasant_view',label:'Pleasant View',url:'https://apnsgis4.apsu.edu/arcgis/rest/services/Cheatham/CheatGIS/MapServer/23',field:'zoning',bbox:[-87.07,36.36,-86.98,36.43]},
+  {key:'pegram',label:'Pegram',url:'https://apnsgis4.apsu.edu/arcgis/rest/services/Cheatham/CheatGIS/MapServer/22',field:'zoning',bbox:[-87.07,36.08,-87.00,36.13]},
+  {key:'warren_bg',label:'Warren Co / Bowling Green KY',url:'https://webgis.bgky.org/server/rest/services/CCPC/CCPC_Zoning/FeatureServer/0',field:'Zoning',bbox:[-86.60,36.78,-86.30,37.10]},
+  {key:'coffee',label:'Coffee County',url:'https://services5.arcgis.com/PCqaN0DanqMk18pL/arcgis/rest/services/ZONING_Coffee/FeatureServer/0',field:'ZONE_',where:"ZONE_<>' '",bbox:[-86.2795,35.289,-85.8692,35.7062]},
+  {key:'tullahoma',label:'Tullahoma',url:'https://services5.arcgis.com/CCsXJ8hDZ7P0xrDc/arcgis/rest/services/Tullahoma_Interactive_Zoning_Map_12_2025_WFL1/FeatureServer/5',field:'ZONE_',bbox:[-86.2748,35.324,-86.1554,35.422]},
+  {key:'marshall',label:'Marshall County',url:'https://services5.arcgis.com/PCqaN0DanqMk18pL/arcgis/rest/services/Marshall_County_Zoning/FeatureServer/0',field:'ZONE_',bbox:[-86.961,35.2534,-86.6014,35.7108]},
+  {key:'shelbyville',label:'Shelbyville',url:'https://services3.arcgis.com/0Uo0Kvp9YTHRegvR/arcgis/rest/services/Shelbyville_Zoning/FeatureServer/2',field:'ZONEID',where:'ZONEID IS NOT NULL',bbox:[-86.5024,35.4432,-86.3943,35.5793]},
+  {key:'maury',label:'Maury County',url:'https://services7.arcgis.com/XUPcCUM3EN27beNY/arcgis/rest/services/MCParcelZonelLayer/FeatureServer/0',field:'cZoneDistr',where:"cZoneDistr<>' ' AND cZoneDistr IS NOT NULL",bbox:[-87.3543,35.4087,-86.7849,35.8502]},
+  {key:'columbia',label:'Columbia',url:'https://services6.arcgis.com/ubRvNDgGwwJuZMcL/arcgis/rest/services/Zoning/FeatureServer/1',field:'ZONING',where:"ZONING<>' '",bbox:[-87.1394,35.5646,-86.8872,35.7234]},
+  {key:'springhill',label:'Spring Hill',url:'https://services1.arcgis.com/tF0XsRR9ptiKNVW2/arcgis/rest/services/Zoning_Spring_Hill_view/FeatureServer/2',field:'Label',where:"Label<>' '",bbox:[-86.9959,35.6929,-86.8422,35.7951]}
 ];
 var UCDD_COLORS:any={
   smith:{'R-1':[242,223,12],'I-1':[142,4,189],'A-1':[33,222,36],'C-1':[255,0,8],'CRT':[255,136,0],'GRD':[135,72,4],'R-C':[255,0,217],'SCA':[3,255,217]},
@@ -368,7 +368,7 @@ var UCDD_COLORS:any={
   sumner_co:{'AGRICULTURAL RESERVE (AR)':[38,115,0],'COMMERCIAL GENERAL (CG)':[255,190,190],'COMMERCIAL NEIGHBORHOOD (CN)':[215,158,158],'COMMERCIAL SERVICES (CS)':[255,211,127],'HEAVY INDUSTRIAL (HI)':[57,163,49],'INSTITUTIONAL (IN)':[0,169,230],'LIGHT INDUSTRIAL (LI)':[169,0,230],'PLANNED UNIT DEVELOPMENT (PUD)':[115,255,223],'RURAL RESIDENTIAL (RR)':[215,158,158],'SUBURBAN RESIDENTIAL (SR)':[255,255,0],'RURAL PRESERVATION (RP)':[180,215,158]},
   gallatin:{'A':[85,255,0],'CC':[168,0,0],'CG':[230,0,0],'CG(PUD)':[255,0,197],'CS':[255,190,232],'CS(PUD)':[245,122,122],'CSL':[223,115,255],'COMMERCIAL SERVICES (CS)':[255,211,127],'GO':[0,37,167],'IG':[197,0,255],'IR':[132,0,168],'INSTITUTIONAL (IN)':[0,169,230],'LIGHT INDUSTRIAL (LI)':[169,0,230],'MPO':[255,0,0],'MRO':[230,76,0],'MRO(PUD)':[255,122,0],'MU':[74,164,254],'MUG':[0,255,197],'OR':[255,190,190],'PBP':[255,0,77],'PGC':[214,157,188],'PNC':[230,0,169],'PLANNED UNIT DEVELOPMENT (PUD)':[115,255,223],'R-06':[205,137,102],'R-06(PRD)':[255,255,190],'R-06(PUD)':[215,176,158],'R-08':[245,162,122],'R-08(PRD)':[255,167,127],'R-10':[230,127,0],'R-10(PRD)':[245,202,122],'R-15':[255,235,190],'R-15(PRD)':[255,170,0],'R-15(PUD)':[255,211,127],'R-20':[255,255,0],'R-20(PRD)':[255,235,175],'R-20(PUD)':[230,230,0],'R-40':[255,255,115],'RURAL RESIDENTIAL (RR)':[180,215,158],'SP':[159,164,238]},
   hendersonville:{'DN':[115,0,0],'ER':[193,227,91],'GC':[230,0,0],'HC':[168,0,230],'I':[0,115,255],'MFR':[138,101,59],'MXC':[255,85,0],'MXR':[204,168,102],'NC':[255,166,128],'O':[255,117,225],'RR':[165,255,117],'SR-1':[230,230,0],'SR-2':[255,170,0],'SR-3':[20,158,206]},
-  whitehouse:{'R-10':[233,255,190],'R-15':[255,235,175],'R-20':[137,205,102],'C-1':[255,190,190],'R-TC':[255,255,0],'C-1R':[215,176,158],'C-2':[255,0,0],'C-4':[168,56,0],'C-5':[115,0,0],'C-6':[255,170,0],'I-1':[190,232,255],'I-2':[115,178,255],'NCRPUD':[205,170,102],'SRPUD':[68,137,112]},
+  white_house:{'R-10':[233,255,190],'R-15':[255,235,175],'R-20':[137,205,102],'C-1':[255,190,190],'R-TC':[255,255,0],'C-1R':[215,176,158],'C-2':[255,0,0],'C-4':[168,56,0],'C-5':[115,0,0],'C-6':[255,170,0],'I-1':[190,232,255],'I-2':[115,178,255],'NCRPUD':[205,170,102],'SRPUD':[68,137,112]},
   portland:{'GCS':[255,190,190],'R15':[168,168,0],'RS20':[85,255,0],'R7.5':[255,255,190],'R10':[255,255,115],'RS40':[112,168,0],'RM1':[211,255,190],'CBD':[255,0,0],'R40':[255,255,255],'IR':[115,178,255],'OPS':[255,115,223],'IG':[190,210,255],'HCD':[223,115,255],'RS15':[163,255,115],'RMHP':[233,255,190],'NSD':[255,190,232],'PUD':[190,255,232],'RM1 - PUD':[133,133,133]},
   millersville:{'NC':[253,127,111],'O':[255,0,197],'MXC':[255,170,0],'GC':[230,0,0],'HC':[169,0,230],'RR':[40,184,67],'ER':[162,255,31],'SR-1':[255,255,0],'SR-2':[230,152,0],'THR':[66,99,0],'MXR':[183,129,74],'MFR':[115,38,0],'I':[0,112,255],'PD':[153,153,153],'H':[26,26,26]},
   goodlettsville:{'A':[252,225,207],'CC':[215,252,199],'CG':[179,193,252],'CPUD':[215,252,252],'CPUDL':[252,207,192],'CS':[194,179,252],'CSL':[182,252,232],'GOPUD':[179,252,187],'HDRPUD':[252,227,184],'IC':[252,182,218],'IG':[210,252,220],'IR':[182,243,252],'LDRPUD':[252,188,182],'MDRPUD':[192,252,204],'NMOVRLY':[251,252,179],'OP':[219,252,182],'R10':[252,179,196],'R15':[184,210,252],'R25':[252,251,212],'R40':[236,202,252],'R7':[222,212,252],'RC1PUD':[215,234,252],'RLSPUD':[252,215,230],'ROPUD':[251,182,252]},
@@ -377,7 +377,7 @@ var UCDD_COLORS:any={
   trousdale_co:{'A1':[255,255,255],'R1':[255,255,190],'R2':[255,255,0],'C1':[255,0,0],'C2':[255,190,190],'M1':[232,190,255],'M2':[76,0,115]},
   wilson_co:{'A-1':[56,168,0],'R-1':[230,230,0],'R-2':[230,152,0],'R-3':[168,112,0],'C-1':[255,190,190],'C-2':[255,127,127],'C-3':[255,0,0],'C-4':[245,122,182],'C-5':[168,0,0],'C-O':[255,127,127],'LOC':[255,127,127],'I-1':[232,190,255],'I-2':[197,0,255],'R-1\\PUD':[230,230,0],'R-2\\PUD':[230,152,0],'R-3\\PUD':[168,112,0],'C-1\\PUD':[255,190,190],'C-2\\PUD':[230,0,0],'C-3\\PUD':[255,0,0]},
   lebanon:{'CF':[0,38,102],'CI':[153,0,0],'COM':[255,191,191],'CS':[235,51,54],'CXU':[217,89,0],'DXU':[255,153,0],'IH':[89,0,140],'IL':[217,153,230],'IP':[245,217,255],'PUD':[133,235,214],'RD9':[179,135,102],'RM6':[89,25,0],'RMH':[51,0,0],'RPI':[0,92,145],'RPO':[102,140,0],'RS12':[242,242,102],'RS20':[242,242,191],'RS6':[204,166,0],'RS9':[230,209,0],'RXH':[128,71,0],'SP':[0,171,204],'UC':[110,173,212]},
-  mtjuliet:{'I-R PUD':[178,178,178],'AR-40':[209,255,115],'CG':[167,55,43],'CI':[255,0,0],'CMU':[197,217,234],'CNS':[255,0,197],'CRC':[255,127,127],'CTC':[115,178,255],'I-G':[130,130,130],'I-R':[204,204,204],'OPS':[161,33,240],'R-MHP':[200,133,68],'RM-8':[254,144,16],'RS-10':[255,190,232],'R-10':[255,255,0],'RS-15':[115,255,223],'RM-16':[255,211,127],'RS-20':[254,216,39],'RS-30':[255,255,190],'RS-40':[211,255,190],'PUD':[110,110,110],'CMU-PUD':[178,178,178],'CRC-PUD':[178,178,178],'RS-15 PUD':[178,178,178],'R-10 PUD':[178,178,178],'RM-16 PUD':[255,211,127],'RS-30 PUD':[178,178,178],'RS-20 PUD':[178,178,178],'CTC PUD':[115,178,255],'CG-PUD':[178,178,178],'CNS-PUD':[130,130,130],'RM-8 PUD':[254,144,16],'RS10 PUD':[178,178,178],'CI-PUD':[20,158,206],'OPS-PUD':[60,175,153],'RS-40 PUD':[163,255,115]},
+  mt_juliet:{'I-R PUD':[178,178,178],'AR-40':[209,255,115],'CG':[167,55,43],'CI':[255,0,0],'CMU':[197,217,234],'CNS':[255,0,197],'CRC':[255,127,127],'CTC':[115,178,255],'I-G':[130,130,130],'I-R':[204,204,204],'OPS':[161,33,240],'R-MHP':[200,133,68],'RM-8':[254,144,16],'RS-10':[255,190,232],'R-10':[255,255,0],'RS-15':[115,255,223],'RM-16':[255,211,127],'RS-20':[254,216,39],'RS-30':[255,255,190],'RS-40':[211,255,190],'PUD':[110,110,110],'CMU-PUD':[178,178,178],'CRC-PUD':[178,178,178],'RS-15 PUD':[178,178,178],'R-10 PUD':[178,178,178],'RM-16 PUD':[255,211,127],'RS-30 PUD':[178,178,178],'RS-20 PUD':[178,178,178],'CTC PUD':[115,178,255],'CG-PUD':[178,178,178],'CNS-PUD':[130,130,130],'RM-8 PUD':[254,144,16],'RS10 PUD':[178,178,178],'CI-PUD':[20,158,206],'OPS-PUD':[60,175,153],'RS-40 PUD':[163,255,115]},
   watertown:{'A':[112,168,0],'B-1':[184,222,252],'B-2':[252,189,182],'B-3':[179,182,252],'I-1':[179,252,243],'POS':[238,212,252],'R-1':[244,241,154],'R-2':[252,197,220],'RM-2':[252,250,179],'SC':[182,202,252]},
   sparta:{'R-A':[204,235,197],'R-B':[253,218,236],'R-C':[251,180,174],'C-A':[222,203,228],'C-B':[254,217,166],'C-C':[255,255,204],'C-D':[179,205,227],'M-I':[229,216,189]},
   cookeville:{'CBD':[255,0,0],'CG':[166,0,0],'CI':[255,0,0],'CL':[229,181,156],'CN':[255,0,0],'CR':[230,0,0],'HM':[130,130,130],'LM':[225,225,225],'MS':[0,196,201],'PCD':[190,232,255],'PRD':[211,255,190],'QM':[212,239,252],'RD':[255,245,171],'RM14':[168,112,0],'RM8':[255,170,0],'RMHP':[92,137,68],'RS10':[255,255,115],'RS15':[255,0,0],'RS20':[152,230,0],'RS5':[255,255,115],'RS7.5':[255,235,175],'UNV':[179,196,252]},
@@ -409,7 +409,7 @@ var UCDD_COLORS:any={
   tullahoma:{'AG':[38,115,0],'C-1':[230,152,0],'C-2':[230,0,0],'C-3':[205,102,102],'I-1':[194,158,215],'I-2':[132,0,168],'OS-1':[114,137,68],'PUD':[78,78,78],'R-1':[255,255,190],'R-2':[255,255,115],'R-3':[190,232,255],'R-4':[0,77,168]},
   marshall:{'A-1':[200,235,170],'A-2':[180,225,150],'C-1':[255,180,140],'C-2':[255,140,120],'M-1':[200,160,230],'M-2':[175,130,205],'R-1':[255,255,180]},
   shelbyville:{'A1':[225,240,180],'C1':[255,190,232],'C2':[255,0,197],'C3':[168,0,132],'HD':[255,167,127],'I1':[204,204,204],'I2':[130,130,130],'I3':[104,104,104],'MHP':[205,102,102],'PCD':[215,158,158],'PID':[245,122,122],'PRD':[205,102,102],'PUD':[137,68,68],'R1':[211,255,190],'R2':[163,255,115],'R3':[76,230,0],'R3A':[38,115,0],'R4':[112,168,0]},
-  maury_zoning:{'AP':[180,180,210],'CC':[255,160,140],'CRC':[255,185,120],'IH':[160,110,190],'IL':[200,160,230],'IM':[180,135,205],'PD':[210,200,225],'RG':[225,240,180],'RN':[205,230,160],'SC':[255,205,150]},
+  maury:{'AP':[180,180,210],'CC':[255,160,140],'CRC':[255,185,120],'IH':[160,110,190],'IL':[200,160,230],'IM':[180,135,205],'PD':[210,200,225],'RG':[225,240,180],'RN':[205,230,160],'SC':[255,205,150]},
   columbia:{'B1-PUD':[76,129,205],'B3-PUD':[241,152,60],'CBD':[72,136,92],'CEG-PUD':[165,83,183],'CSO':[255,247,153],'GCS':[177,169,208],'GRS-PUD':[110,207,252],'IG':[106,246,137],'IR':[252,210,126],'IS':[252,62,90],'ISD':[252,225,56],'MCD':[76,129,205],'MRC':[241,152,60],'MU-PUD':[72,136,92],'OCL':[165,83,183],'R-10':[255,247,153],'R-20':[177,169,208],'R-6':[110,207,252],'R-MHP':[252,111,132],'R1-PUD':[106,246,137],'R2-PUD':[252,210,126],'R6-PUD':[252,62,90],'RM-1':[252,225,56],'RM-2':[76,129,205],'RS-10':[255,247,153],'RS-20':[110,207,252],'RS-40':[252,111,132],'RS-6':[106,246,137]},
   springhill:{'AG':[212,230,188],'NA':[0,112,97],'PR':[123,191,67],'R-R':[163,171,92],'R-1':[255,251,204],'R-2':[255,242,102],'R-3':[255,211,115],'R-4':[250,174,22],'R-5':[245,129,34],'R-6':[189,126,49],'R-7':[138,96,56],'C-1':[250,209,200],'C-2':[245,157,137],'C-3':[222,89,84],'C-4':[207,25,34],'C-5':[143,6,10],'C-D-C':[235,0,141],'C-D-E1':[242,138,185],'IC':[185,211,237],'I-1':[215,209,230],'I-2':[177,147,189],'PD (R-6)':[156,156,156],'PD (C-4)':[156,156,156],'PD (C-5)':[156,156,156],'PD (I-2)':[156,156,156],'PUD (R-2)':[156,156,156],'PUD (COMM)':[156,156,156],'CZ':[156,156,156],'PZD':[156,156,156]}
 };
@@ -435,7 +435,7 @@ var UCDD_NAMES:any={
   sumner_co:{},
   gallatin:{'A':'Agricultural District','CC':'Core Commercial District','CG':'Commercial General District','CG(PUD)':'Commercial General District (PUD)','CS':'Commercial Services District','CS(PUD)':'Commercial Services District (PUD)','CSL':'Commercial Services Limited District','GO':'General Office District','IG':'General Industrial District','IR':'Restrictive Industrial District','MPO':'Medical-Professional Office District','MRO':'Multiple Residential and Office District','MRO(PUD)':'Multiple Residential and Office District (PUD)','MU':'Mixed Use District','MUG':'Mixed Use General District','OR':'Office Residential District','PBP':'Planned Business Park District','PGC':'Planned General Commercial District','PNC':'Planned Neighborhood Commercial District','R-06':'High Density Residential District','R-06(PRD)':'High Density Residential District (PRD)','R-06(PUD)':'High Density Residential District (PUD)','R-08':'Medium Density Residential District','R-08(PRD)':'Medium Density Residential District (PRD)','R-10':'Medium Density Residential District','R-10(PRD)':'Medium Density Residential District (PRD)','R-15':'Low-Medium Density Residential District','R-15(PRD)':'Low-Medium Density Residential District (PRD)','R-15(PUD)':'Low-Medium Density Residential District (PUD)','R-20':'Low Density Residential District','R-20(PRD)':'Low Density Residential District (PRD)','R-20(PUD)':'Low Density Residential District (PUD)','R-40':'Low Density Residential District','SP':'Specific Plan District'},
   hendersonville:{'DN':'Dockside Neighborhood','ER':'Estate Residential','GC':'General Commercial','HC':'Heavy Commercial','I':'Industrial','MFR':'Multi-Family Residential','MXC':'Mixed Commercial','MXR':'Mixed Residential','NC':'Neighborhood Commercial','O':'Office','RR':'Rural Residential','SR-1':'Suburban Residential 1','SR-2':'Suburban Residential 2','SR-3':'Suburban Residential 3'},
-  whitehouse:{'R-10':'High Density Residential','R-15':'Medium Density Residential','R-20':'Low Density Residential','C-1':'Central Business Commercial','R-TC':'High Density Town Center Commercial','C-1R':'Central Business - Gateway Infill Residential','C-2':'Interstate Sign District','C-4':'Office / Professional','C-5':'Limited Office / Professional','C-6':'Town Center Commercial','I-1':'Light Industrial','I-2':'Heavy Industrial','NCRPUD':'Neighborhood Center','SRPUD':'Suburban Residential'},
+  white_house:{'R-10':'High Density Residential','R-15':'Medium Density Residential','R-20':'Low Density Residential','C-1':'Central Business Commercial','R-TC':'High Density Town Center Commercial','C-1R':'Central Business - Gateway Infill Residential','C-2':'Interstate Sign District','C-4':'Office / Professional','C-5':'Limited Office / Professional','C-6':'Town Center Commercial','I-1':'Light Industrial','I-2':'Heavy Industrial','NCRPUD':'Neighborhood Center','SRPUD':'Suburban Residential'},
   portland:{'CBD':'Central Business District','GCS':'General Commercial Service District','HCD':'Heavy Commercial Distribution','IG':'General Industrial District','IR':'Restrictive Industrial District','NSD':'Neighborhood Service District','OPS':'Office / Professional Service District','PUD':'Planned Unit Development','R10':'Low Density Residential','R15':'Low Density Residential','R40':'Low Density Residential','R7.5':'Medium Density Residential','RM1':'High Density Residential','RM1 - PUD':'High Density Residential (PUD)','RMHP':'Mobile Home Park Residential','RS15':'Single-Family Low Density Residential','RS20':'Single-Family Low Density Residential','RS40':'Single-Family Low Density Residential'},
   millersville:{'NC':'Neighborhood Commercial','O':'Office','MXC':'Mixed Commercial','GC':'General Commercial','HC':'Heavy Commercial','RR':'Rural Residential','ER':'Estate Residential','SR-1':'Suburban Residential 1','SR-2':'Suburban Residential 2','THR':'Townhome Residential','MXR':'Mixed Residential','MFR':'Multi-Family Residential','I':'Industrial','PD':'Planned Development','H':'Historic and Landmarks'},
   goodlettsville:{'A':'Agricultural','CC':'Commercial Core','CG':'Commercial General','CPUD':'Commercial Planned Unit Development','CPUDL':'Commercial Planned Unit Development Limited','CS':'Commercial Services','CSL':'Commercial Services Limited','GOPUD':'General Office Planned Unit Development','HDRPUD':'High Density Residential Planned Unit Development','IC':'Industrial Commercial','IG':'Industrial General','IR':'Industrial Restricted','LDRPUD':'Low Density Residential Planned Unit Development','MDRPUD':'Medium Density Residential Planned Unit Development','NMOVRLY':'North Main Street Overlay District','OP':'Office Professional','R10':'Medium Density Residential','R15':'Medium Density Residential','R25':'Low Density Residential','R40':'Low Density Residential','R7':'High Density Residential','RC1PUD':'Regional Center Planned Unit Development High Intensity','RLSPUD':'Residential Limited Scale Planned Unit Development','ROPUD':'Restricted Office Planned Unit Development'},
@@ -444,7 +444,7 @@ var UCDD_NAMES:any={
   trousdale_co:{'A1':'Agriculture-Forestry','R1':'Residential','R2':'Residential','C1':'General Commercial','C2':'Highway Commercial','M1':'General Industrial District','M2':'Intermediate Impact Industrial District'},
   wilson_co:{'A-1':'Agricultural-Residential','R-1':'Low Density Residential','R-2':'Medium Density Residential','R-3':'High Density Residential','C-1':'Commercial','C-2':'General Commercial','C-3':'Highway Commercial','C-4':'Commercial','C-5':'Planned Commercial','C-O':'Office / Commercial','LOC':'Local Commercial','I-1':'Light Industrial','I-2':'Heavy Industrial'},
   lebanon:{'RS6':'Single-Family Residential','RS9':'Single-Family Residential','RS12':'Single-Family Residential','RS20':'Single-Family Residential','RD9':'Two-Family Residential','RM6':'Multi-Family Residential','RMH':'Manufactured Home Residential','RPO':'Residential / Professional Office','RPI':'Residential / Professional Institutional','RXH':'Residential Mixed-Use','COM':'Commercial','CS':'Commercial Service','CI':'Commercial Interchange','CF':'Civic / Institutional','CXU':'Corridor Mixed-Use','DXU':'Downtown Mixed-Use','UC':'Urban Center','SP':'Special Purpose','PUD':'Planned Unit Development','IL':'Light Industrial','IH':'Heavy Industrial','IP':'Industrial Park'},
-  mtjuliet:{'AR-40':'Agricultural-Residential','R-10':'Single-Family Residential','RS-10':'Single-Family Residential','RS-15':'Single-Family Residential','RS-20':'Single-Family Residential','RS-30':'Single-Family Residential','RS-40':'Single-Family Residential','RM-8':'Multi-Family Residential','RM-16':'Multi-Family Residential','R-MHP':'Manufactured Home Park','CTC':'Commercial Town Center','CRC':'Commercial Regional Center','CG':'Commercial General','CI':'Commercial Interchange','CMU':'Commercial Mixed-Use','CNS':'Commercial Neighborhood Services','OPS':'Office / Professional Services','I-G':'Industrial General','I-R':'Industrial Restricted','PUD':'Planned Unit Development'},
+  mt_juliet:{'AR-40':'Agricultural-Residential','R-10':'Single-Family Residential','RS-10':'Single-Family Residential','RS-15':'Single-Family Residential','RS-20':'Single-Family Residential','RS-30':'Single-Family Residential','RS-40':'Single-Family Residential','RM-8':'Multi-Family Residential','RM-16':'Multi-Family Residential','R-MHP':'Manufactured Home Park','CTC':'Commercial Town Center','CRC':'Commercial Regional Center','CG':'Commercial General','CI':'Commercial Interchange','CMU':'Commercial Mixed-Use','CNS':'Commercial Neighborhood Services','OPS':'Office / Professional Services','I-G':'Industrial General','I-R':'Industrial Restricted','PUD':'Planned Unit Development'},
   watertown:{'A':'Agricultural','B-1':'Neighborhood Business','B-2':'General Business','B-3':'Central Business','R-1':'Low Density Residential','R-2':'Medium Density Residential','RM-2':'Multi-Family Residential','SC':'Shopping Center','I-1':'Light Industrial','POS':'Parks / Open Space'},
   sparta:{'R-A':'Low Density Residential','R-B':'Medium Density Residential','R-C':'High Density Residential','C-A':'Neighborhood Commercial','C-B':'General Commercial','C-C':'Central Business','C-D':'Highway Commercial','M-I':'Manufacturing-Industrial'},
   cookeville:{'RS5':'Single Family Residential','RS7.5':'Single Family Residential','RS10':'Single Family Residential','RS15':'Single Family Residential','RS20':'Single Family Residential','RD':'Single-Family & Duplex Residential','RM8':'Multi-Family Residential','RM14':'Multi-Family Residential','RMHP':'Residential Mobile Home Park','CN':'Neighborhood Commercial','CL':'Local Commercial','CR':'Regional Commercial','CG':'General Commercial','CBD':'Central Business District','CI':'Commercial-Industrial Mixed Use','MS':'Medical Services','LM':'Light Manufacturing','HM':'Heavy Manufacturing','QM':'Quarry & Mining','PCD':'Planned Commercial Development','PRD':'Planned Residential Development','UNV':'University'},
@@ -470,7 +470,7 @@ var UCDD_NAMES:any={
   tullahoma:{'AG':'Agricultural','C-1':'Neighborhood Commercial','C-2':'General Commercial','C-3':'Highway Commercial','I-1':'Light Industrial','I-2':'Heavy Industrial','OS-1':'Open Space','PUD':'Planned Unit Development','R-1':'Low Density Residential','R-2':'Medium Density Residential','R-3':'High Density Residential','R-4':'Multi-Family Residential'},
   marshall:{'A-1':'Agricultural','A-2':'Agricultural / Rural Residential','C-1':'Neighborhood Commercial','C-2':'General Commercial','M-1':'Light Industrial','M-2':'Heavy Industrial','R-1':'Residential'},
   shelbyville:{'A1':'Low Density Agriculture','C1':'Central Business','C2':'General Commercial','C3':'Neighborhood Service','HD':'Historic District','I1':'Light Industrial','I2':'General/Heavy Industrial','I3':'Special Impact Industrial','MHP':'Mobile Home Park','PCD':'Planned Commercial Development','PID':'Planned Industrial Development','PRD':'Planned Residential Development','PUD':'Planned Unit/Mixed-Use Development','R1':'Low Density Residential','R2':'Medium Density Residential','R3':'Medium-High Density Residential','R3A':'Medium-High Density Residential','R4':'Multi-Family/High Density Residential'},
-  maury_zoning:{'AP':'Airport','CC':'Community Commercial','CRC':'Commercial Rural Center','IH':'Heavy Industrial','IL':'Light Industrial','IM':'Medium Industrial','PD':'Planned Development','RG':'Rural General','RN':'Rural Neighborhood','SC':'Suburban Center'},
+  maury:{'AP':'Airport','CC':'Community Commercial','CRC':'Commercial Rural Center','IH':'Heavy Industrial','IL':'Light Industrial','IM':'Medium Industrial','PD':'Planned Development','RG':'Rural General','RN':'Rural Neighborhood','SC':'Suburban Center'},
   columbia:{'B1-PUD':'Neighborhood Business (PUD)','B3-PUD':'Highway Business (PUD)','CBD':'Central Business District','CEG-PUD':'Commercial / Employment (PUD)','CSO':'Commercial Services and Office','GCS':'General Commercial Services','GRS-PUD':'General Residential (PUD)','IG':'General Industrial','IR':'Restricted Industrial','IS':'Service Industrial','ISD':'Institutional / Special District','MCD':'Mixed-Use Commercial District','MRC':'Mixed Residential Commercial','MU-PUD':'Mixed Use (PUD)','OCL':'Office and Commercial Limited','R-10':'Single-Family Residential','R-20':'Single-Family Residential','R-6':'Single-Family Residential','R-MHP':'Manufactured Home Park','R1-PUD':'Residential (PUD)','R2-PUD':'Residential (PUD)','R6-PUD':'Residential (PUD)','RM-1':'Multi-Family Residential','RM-2':'Multi-Family Residential','RS-10':'Single-Family Residential','RS-20':'Single-Family Residential','RS-40':'Single-Family Residential','RS-6':'Single-Family Residential'},
   springhill:{'AG':'Agricultural','NA':'Non-Annexed / Reserve','PR':'Parks and Recreation','R-R':'Rural Residential','R-1':'Low Density Residential','R-2':'Low Density Residential','R-3':'Medium Density Residential','R-4':'Medium Density Residential','R-5':'High Density Residential','R-6':'High Density Residential','R-7':'Multi-Family Residential','C-1':'Neighborhood Commercial','C-2':'General Commercial','C-3':'Highway Commercial','C-4':'Central Commercial','C-5':'Regional Commercial','C-D-C':'Downtown Commercial Core','C-D-E1':'Downtown Edge','IC':'Industrial / Commercial','I-1':'Light Industrial','I-2':'Heavy Industrial','PD (R-6)':'Planned Development (Residential)','PD (C-4)':'Planned Development (Commercial)','PD (C-5)':'Planned Development (Commercial)','PD (I-2)':'Planned Development (Industrial)','PUD (R-2)':'Planned Unit Development (Residential)','PUD (COMM)':'Planned Unit Development (Commercial)','CZ':'Conservation','PZD':'Planned Zoning District'},
   montgomery:{'A':'Agricultural','AG':'Agricultural','C-1':'Neighborhood Commercial','C-2':'General Commercial','C-3':'Commercial','C-4':'Commercial','C-5':'Highway and Arterial Commercial','CBD':'Central Business District','E-1':'Single-Family Estate','E-1A':'Single-Family Estate','EM-1':'Single-Family Manufactured Home','EM-1A':'Single-Family Manufactured Home','FT CAMPBELL':'Fort Campbell (Military)','H-1':'Historic Overlay','M-1':'Light Industrial','M-2':'General Industrial','M-3':'Heavy Industrial','MLUD':'Mixed Land Use District','O-1':'Office','OP':'Office and Professional','PUD-1':'Planned Unit Development','PUD-2':'Planned Unit Development','PUD-3':'Planned Unit Development','R-1':'Single-Family Residential','R-1A':'Single-Family Residential','R-2':'Single-Family Residential','R-2D':'Two-Family Residential','R-3':'Multi-Family Residential','R-4':'Multi-Family Residential','R-5':'Multi-Family Residential','RM-1':'Manufactured Home','RM-2':'Manufactured Home Park'},
@@ -515,15 +515,15 @@ export interface IPropertyDeedMapWebPartProps { title: string; workerUrl: string
 export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPropertyDeedMapWebPartProps> {
   private map:any; private parcelLayer:any; private hiLayer:any; private labels:any; private bases:any;
   private POP:any = {}; private pseq=0;
-  private inflight:any[] = []; private loadTimer:any = null; private rzTimer:any = null;
-  private loadedBounds:any = null; private loadedZoom:number = -1;
+  private inflight:any[] = []; private loadTimer:any = null; private rzTimer:any = null; private lblTimer:any = null;
+  private loadedBounds:any = null; private loadedZoom:number = -1; private _loadCapped=false; private _parcelsSettled=false; private _afterParcels:any[]=[];
   private zoneByPin:any = {}; private zoningView=true; private zoningEdit=false;
   private zTarget:any = null; private loadSeq=0; private tagJur:string='auto';
-  private workedByPin:any={}; private workView=false; private workEdit=false; private wTarget:any=null; private _collW=false; private _workLoaded=false; private workedWipIds:any={}; private _workCount=0; private _workUnresolved=0; private _wipPick:any[]=[]; private _workColorMode:string='flat'; private pWorkYearOn:any={};
-  private selFeat:any=null; private selN:any=null; private selLayer:any=null; private labelLayer:any=null; private workedGeomLayer:any=null; private _workGeomLoaded=false; private _folderCache:any={}; private _printMap:any=null;
+  private workedByPin:any={}; private workView=false; private workEdit=false; private wTarget:any=null; private _collW=false; private _collWYear=false; private _workLoaded=false; private workedWipIds:any={}; private _workCount=0; private _workUnresolved=0; private _wipPick:any[]=[]; private _workColorMode:string='flat'; private pWorkYearOn:any={};
+  private selFeat:any=null; private selN:any=null; private selLayer:any=null; private labelLayer:any=null; private workedGeomLayer:any=null; private _workGeomLoaded=false; private _folderCache:any={}; private _printMap:any=null; private _printScaleHtml='';
   private splitState:any=null; private splitLayer:any=null; private splitTmp:any[]=[]; private splitMarkers:any[]=[]; private _splitClick:any=null; private _splitDrawPopup:any=null;
-  private femaLayer:any=null; private _femaOn=false; private contourLayer:any=null; private _contourOn=false; private wetlandLayer:any=null; private _wetlandOn=false; private areasLayer:any=null; private _areasRenderer:any=null; private areas:any[]=[]; private _areasOn=false; private roadLayer:any=null; private _roadOn=false; private _roadSeq=0; private _roadBounds:any=null; private _roadZoom:number=-1; private _roadRenderer:any=null;
-  private ucddLayer:any=null; private _ucddSeq=0; private _ucddCount=0; private _ucddBounds:any=null; private _ucddZoom:number=-1; private _ucddCache:any={}; private _ucddRenderer:any=null;
+  private femaLayer:any=null; private _femaOn=false; private contourLayer:any=null; private _contourOn=false; private wetlandLayer:any=null; private _wetlandOn=false; private areasLayer:any=null; private _areasRenderer:any=null; private areas:any[]=[]; private _areasOn=false; private roadLayer:any=null; private _roadOn=false; private _roadSeq=0; private _roadCtrl:any=null; private _roadBounds:any=null; private _roadZoom:number=-1; private _roadRenderer:any=null;
+  private ucddLayer:any=null; private _ucddSeq=0; private _ucddCtrl:any=null; private _ucddCount=0; private _ucddBounds:any=null; private _ucddZoom:number=-1; private _ucddCache:any={}; private _ucddRenderer:any=null;
   private areaState:any=null; private areaMarkers:any[]=[]; private areaLine:any=null; private _areaClick:any=null;
   private projects:any[]=[]; private projectLayer:any=null; private _projRenderer:any=null; private _projOn=false; private _projLoaded=false;
   private inquiries:any[]=[]; private inqLayer:any=null; private _inqOn=false; private _inqLoaded=false; private inqGeo:any={}; private _quoteFolderCache:any={};
@@ -612,6 +612,7 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
         .badge{display:inline-block;padding:1px 6px;border-radius:9px;font-size:10px;font-weight:700;color:#fff;}
         .b-ok{background:#16a34a;} .b-warn{background:#d97706;}
         .leaflet-popup-content{margin:10px 12px;max-width:280px;}
+        .lp,.dls-pop{font-family:'Segoe UI',Arial,sans-serif;}
         .dls-pm #zmode{background:#33445a;color:#fff;}
         .dls-pm #wmode{background:#2a4a33;color:#fff;}
         .wk-row{margin:3px 0}
@@ -678,6 +679,7 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
         .zp .zp-save{background:#16a34a;color:#fff;border:1px solid transparent;border-radius:5px;padding:4px 10px;font-size:11px;font-weight:600;cursor:pointer;}
         .znum{background:#1d4ed8 !important;color:#fff;border:none !important;border-radius:50%;width:18px !important;height:18px !important;line-height:18px;text-align:center;font-size:11px;font-weight:700;box-shadow:0 1px 3px rgba(0,0,0,.45);}
         .dls-pm #proj{background:#33445a;color:#fff;}
+        .dls-pm #inq{background:#33445a;color:#fff;}
         .dls-pm #plegend{display:none;}
         .dls-pm .pp-ct{color:#9fb0c3;font-size:10px;font-weight:400;}
         .dls-pm .pp-search{width:100%;box-sizing:border-box;font-size:11.5px;padding:5px 7px;border:1px solid #cbd5e1;border-radius:5px;margin-bottom:6px;}
@@ -813,13 +815,14 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
     this.workedGeomLayer = L.geoJSON(null,{ pane:'worked', style:(ft:any)=>this.workedStyle(ft), onEachFeature:(ft:any,layer:any)=>this.onWorkedFeat(ft,layer) });
     this.hiLayer = L.geoJSON(null,{ style:{color:'#ff2d55',weight:3,fill:false} }).addTo(this.map);
     this.map.on('moveend',()=>{ clearTimeout(this.loadTimer); this.loadTimer=setTimeout(()=>this.maybeLoad(),250); });
-    this.map.on('zoomend',()=>{ this.renderLabels(); });
+    this.map.on('zoomend',()=>{ clearTimeout(this.lblTimer); this.lblTimer=setTimeout(()=>this.renderLabels(),150); });
     this.setStatus('Pan/zoom to your area — parcels load at zoom '+MINZOOM+'+');
-    setTimeout(()=>{ try{ this.map.invalidateSize(); }catch(e){} this.loadParcels(); },400);
+    this.loadParcels();
+    setTimeout(()=>{ try{ this.map.invalidateSize(); }catch(e){} this.maybeLoad(); },400);
     window.addEventListener('resize',()=>{ clearTimeout(this.rzTimer); this.rzTimer=setTimeout(()=>{ try{ if(this.map) this.map.invalidateSize(); }catch(e){} },200); });
-    this.loadZoning();
-    this.loadWorked();
-    this.loadAreas();
+    this.afterParcels(()=>this.loadZoning());
+    this.afterParcels(()=>this.loadWorked());
+    this.afterParcels(()=>this.loadAreas());
   }
 
   private setBase(v:string): void {
@@ -850,8 +853,15 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
     this.loadUcdd();   // self-guards: only when Zoning on + a UCDD sublayer checked + view left cache
     this.loadRoadSurf();
     const z=this.map.getZoom();
-    if(z>=MINZOOM && this.loadedBounds && this.loadedZoom===z && this.loadedBounds.contains(this.map.getBounds())) return;
+    if(z>=MINZOOM && this.loadedBounds && (this.loadedZoom===z || (z>this.loadedZoom && !this._loadCapped)) && this.loadedBounds.contains(this.map.getBounds())) return;
     this.loadParcels();
+  }
+
+  // Run fn once the first parcel load settles (or after maxWaitMs fallback) — startup bandwidth goes to parcels first.
+  private afterParcels(fn:any, maxWaitMs?:number): void {
+    if(this._parcelsSettled){ fn(); return; }
+    let fired=false; const run=()=>{ if(fired) return; fired=true; fn(); };
+    this._afterParcels.push(run); setTimeout(run, maxWaitMs||5000);
   }
 
   private loadParcels(): void {
@@ -865,9 +875,9 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
     const pb=this.map.getBounds().pad(0.2); this.loadedBounds=pb; this.loadedZoom=this.map.getZoom();
     const env=[pb.getWest(),pb.getSouth(),pb.getEast(),pb.getNorth()].join(',');
     this.setStatus('Loading parcels…');   // keep the OLD parcels on screen until the new set is ready (no flash)
-    let got=0, done=0; const errs:string[]=[]; const acc:any[]=[];
+    let got=0, done=0, capped=false, netFail=false; const errs:string[]=[]; const acc:any[]=[];
     const short=(s:any)=>s.label.replace(/^..? — /,'');
-    const finish=()=>{ if(mySeq!==this.loadSeq) return; if(done===srcs.length){ this.parcelLayer.clearLayers(); if(acc.length) this.parcelLayer.addData(acc); this.setStatus(got+' parcels'+(errs.length?'  · unavailable: '+errs.join('; '):'')); this.renderLabels(); } };
+    const finish=()=>{ if(mySeq!==this.loadSeq) return; if(done===srcs.length){ this._loadCapped=capped; if(netFail) this.loadedBounds=null; this.parcelLayer.clearLayers(); if(acc.length) this.parcelLayer.addData(acc); this.setStatus(got+' parcels'+(errs.length?'  · unavailable: '+errs.join('; '):'')); this.renderLabels(); if(!this._parcelsSettled){ this._parcelsSettled=true; const q0=this._afterParcels; this._afterParcels=[]; q0.forEach((f:any)=>setTimeout(f,0)); } } };
     const httpsPage = (typeof location!=='undefined' && location.protocol==='https:');
     srcs.forEach((s)=>{
       if(httpsPage && /^http:\/\//i.test(s.url)){ errs.push(short(s)+' (HTTP-only — needs HTTPS proxy)'); done++; finish(); return; }
@@ -875,8 +885,9 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
       const url=s.url+'?'+qs({where:s.where||'1=1',geometry:env,geometryType:'esriGeometryEnvelope',inSR:4326,spatialRel:'esriSpatialRelIntersects',outFields:outFieldsFor(s),returnGeometry:true,outSR:4326,resultRecordCount:2000,f:'json'});
       this.arcgisFetch(url,ctrl.signal).then((d:any)=>{
         if(d.error) throw new Error(d.error.message||'service error');
+        if(d.exceededTransferLimit||(d.features&&d.features.length>=1000)) capped=true;
         const feats=esriToFeatures(d); feats.forEach((f:any)=>{ f.properties.__src=s.id; acc.push(f); }); got+=feats.length;
-      }).catch((e:any)=>{ if(e.name!=='AbortError') errs.push(short(s)+' ('+e.message+')'); })
+      }).catch((e:any)=>{ if(e.name!=='AbortError'){ errs.push(short(s)+' ('+e.message+')'); if(e.name==='TypeError'||e.name==='SyntaxError') netFail=true; } })
         .then(()=>{ done++; finish(); });
     });
   }
@@ -892,14 +903,14 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
       if(this.zoningEdit){ this.openZonePicker(n, ll, feat); return; }
       n.ucdd=this.ucddZonesAt(ll);
       this.selectParcel(feat, n);
-      L.popup({maxWidth:320,autoPanPadding:[24,24]}).setLatLng(ll).setContent(this.popupHtml(n)).openOn(this.map);
+      L.popup({maxWidth:280,autoPanPadding:[24,24]}).setLatLng(ll).setContent(this.popupHtml(n)).openOn(this.map);
     });
   }
 
   private ucddZonesAt(ll:any): any[] {
     const out:any[]=[]; if(!ll||!this._ucddCache) return out;
     const lng=ll.lng, lat=ll.lat;
-    for(let i=0;i<UCDD_ZONING.length;i++){ const c=UCDD_ZONING[i]; const feats=this._ucddCache[c.key]; if(!feats||!feats.length) continue;
+    for(let i=0;i<ZONING_LAYERS.length;i++){ const c=ZONING_LAYERS[i]; const feats=this._ucddCache[c.key]; if(!feats||!feats.length) continue;
       for(let k=0;k<feats.length;k++){ if(featHitLL(feats[k],lng,lat)){ const zone=feats[k].properties[c.field]; out.push({label:c.label,zone:(zone==null?'':(''+zone)),name:ucddName(c.key,zone)}); break; } } }
     return out;
   }
@@ -908,7 +919,7 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
     const id='_p'+(this.pseq++); this.POP[id]=n;
     let rows='';
     const row=(k:string,v:any)=>{ if(v) rows+='<tr><td class="k">'+k+'</td><td>'+esc(v)+'</td></tr>'; };
-    let owner=n.owner+(n.owner2?'; '+n.owner2:'');
+    let owner=esc(n.owner+(n.owner2?'; '+n.owner2:''));
     if(n.src.ownerWithheld && !owner) owner='<i>(owner not published by county)</i>';
     rows+='<tr><td class="k">Owner</td><td>'+(owner||'—')+'</td></tr>';
     row('Address',n.address); row('Parcel',n.pin);
@@ -1060,7 +1071,8 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
       this.workedByPin=m; this.workedWipIds=ids; this._workCount=this.countWorkedLots(m); this._workUnresolved=unres; this._workLoaded=true;
       const fc:any={}; for(let fi=0;fi<items.length;fi++){ const it2=items[fi]; if(it2.JobNumber&&it2.FolderURL) fc[it2.JobNumber]=it2.FolderURL; } this._folderCache=fc;
       this._workGeomLoaded=false; if(this.workView){ this.ensureWorkedGeom(); this.buildLegend(); }
-      this.selfHealWorked();
+      const ric:any=(window as any).requestIdleCallback||function(f:any){ setTimeout(f,1500); };
+      ric(()=>this.selfHealWorked());
     }).catch(()=>{});
   }
 
@@ -1101,9 +1113,9 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
     h+='<div class="zdisc">'+this._workCount+' parcels marked surveyed (live from DLS Worked Parcels). ';
     if(this._workUnresolved) h+='<b>'+this._workUnresolved+'</b> job(s) need a lot picked (review worklist). ';
     h+='New WIP jobs with a Tax Map &amp; Parcel are added automatically when the map loads. Switch to <b>Edit</b> to mark a lot surveyed by hand.</div>';
-    h+='<div class="lp-sub" data-wyearsec><div class="lp-subhd"><span class="tw">&#9662;</span> Filter by year <span class="pp-all" data-wyall>all</span></div><div class="lp-subbd"><div id="wYear"></div></div></div>';
+    h+='<div class="lp-sub'+(this._collWYear?' coll':'')+'" data-wyearsec><div class="lp-subhd"><span class="tw">&#9662;</span> Filter by year <span class="pp-all" data-wyall>all</span></div><div class="lp-subbd"><div id="wYear"></div></div></div>';
     el.innerHTML=h;
-    const c=this.domElement.querySelector('#wCount'); if(c) c.textContent=this._workShownCount()+' lots'; this.renderWorkYearSection(); const _wself=this; const _wh=el.querySelector('[data-wyearsec] .lp-subhd') as any; if(_wh) _wh.addEventListener('click',function(e:any){ const a=(e.target&&e.target.closest)?e.target.closest('[data-wyall]'):null; if(a){ _wself.workYearAllOn(); return; } const sub=this.parentNode; if(sub) sub.classList.toggle('coll'); });
+    const c=this.domElement.querySelector('#wCount'); if(c) c.textContent=this._workShownCount()+' of '+this._workCount+' lots'; this.renderWorkYearSection(); const _wself=this; const _wh=el.querySelector('[data-wyearsec] .lp-subhd') as any; if(_wh) _wh.addEventListener('click',function(e:any){ const a=(e.target&&e.target.closest)?e.target.closest('[data-wyall]'):null; if(a){ _wself.workYearAllOn(); return; } const sub=this.parentNode; if(sub){ _wself._collWYear=sub.classList.toggle('coll'); } });
   }
 
   private openWorkPicker(n:any, ll:any, _feat?:any): void {
@@ -1177,7 +1189,7 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
   private _workShownCount(): number { const pins=Object.keys(this.workedByPin); let n=0; for(let i=0;i<pins.length;i++){ if(this.workedVisibleByYear(this.workedByPin[pins[i]])) n++; } return n; }
   private renderWorkYearSection(): void { const el=this.domElement.querySelector('#wYear') as any; if(!el) return; const counts=this.workedYearCounts(); const keys=Object.keys(counts); for(let i=0;i<keys.length;i++){ if(this.pWorkYearOn[keys[i]]===undefined) this.pWorkYearOn[keys[i]]=true; } keys.sort((a:any,b:any)=>b.localeCompare(a)); const self=this; el.innerHTML=''; for(let i=0;i<keys.length;i++){ const k=keys[i]; const row=document.createElement('div'); row.className='pp-row'+(this.pWorkYearOn[k]===false?' off':''); row.innerHTML='<span class="pp-sq"></span><span class="pp-nm">'+esc(k)+'</span><span class="pp-n">'+counts[k]+'</span>'; row.onclick=function(){ self.pWorkYearOn[k]=self.pWorkYearOn[k]===false; self.applyWorkedYearFilter(); self.renderWorkYearSection(); self.updateWorkCountLabel(); }; el.appendChild(row); } }
   private workYearAllOn(): void { const ks=Object.keys(this.pWorkYearOn); for(let i=0;i<ks.length;i++){ this.pWorkYearOn[ks[i]]=true; } this.applyWorkedYearFilter(); this.renderWorkYearSection(); this.updateWorkCountLabel(); }
-  private updateWorkCountLabel(): void { const c=this.domElement.querySelector('#wCount') as any; if(c) c.textContent=this._workShownCount()+' lots'; }
+  private updateWorkCountLabel(): void { const c=this.domElement.querySelector('#wCount') as any; if(c) c.textContent=this._workShownCount()+' of '+this._workCount+' lots'; }
   private onWorkedFeat(feat:any, layer:any): void {
     layer.on('click',(ev:any)=>{
       if(this.splitState||this.areaState) return;
@@ -1187,7 +1199,7 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
       if(this.zoningEdit){ this.openZonePicker(n, ll, feat); return; }
       n.ucdd=this.ucddZonesAt(ll);
       this.selectParcel(feat, n);
-      L.popup({maxWidth:320,autoPanPadding:[24,24]}).setLatLng(ll).setContent(this.popupHtml(n)).openOn(this.map);
+      L.popup({maxWidth:280,autoPanPadding:[24,24]}).setLatLng(ll).setContent(this.popupHtml(n)).openOn(this.map);
     });
   }
   private ensureWorkedGeom(): void {
@@ -1234,7 +1246,7 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
   private openPrintSheet(n:any, feat:any): void {
     if(!feat||!feat.geometry){ this.setStatus('Click a lot first, then Print.'); return; }
     const old=document.getElementById('dls-print') as any; if(old){ try{ old.parentNode.removeChild(old); }catch(e){} }
-    const host=document.createElement('div'); host.id='dls-print'; host.className='dls-print-modal';
+    const host=document.createElement('div'); host.id='dls-print'; host.className='dls-print-modal'; this._printScaleHtml='';
     const short=this.parcelLabelText(feat)||n.pin||'';
     const dt=new Date(); const dstr=(dt.getMonth()+1)+'/'+dt.getDate()+'/'+dt.getFullYear();
     host.innerHTML=''
@@ -1278,7 +1290,8 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
       const ratio=Math.round(mpp/0.0002645833); const m2ft=3.28084; const targetFt=mpp*150*m2ft;
       const nice=[50,100,200,300,500,1000,2000,5000]; let ft=nice[0]; for(let i=0;i<nice.length;i++){ if(nice[i]<=targetFt) ft=nice[i]; }
       const px=Math.round((ft/m2ft)/mpp); const el=host.querySelector('#dlsPrintScale');
-      if(el) el.innerHTML='<div class="sbar"><div class="sb" style="width:'+px+'px"></div><span>'+ft+' ft</span></div><div class="srat">Scale &asymp; 1:'+ratio+'</div>';
+      const sh='<div class="sbar"><div class="sb" style="width:'+px+'px"></div><span>'+ft+' ft</span></div><div class="srat">Scale &asymp; 1:'+ratio+'</div>';
+      if(el && sh!==this._printScaleHtml){ this._printScaleHtml=sh; el.innerHTML=sh; }
     }catch(e){}
   }
 
@@ -1402,7 +1415,7 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
     this.hiLayer.clearLayers(); this.hiLayer.addData(f);
     try{ this.map.fitBounds(this.hiLayer.getBounds(),{maxZoom:18,padding:[40,40]}); }catch(e){}
     this.selectParcel(f, n);
-    L.popup({maxWidth:320}).setLatLng(this.hiLayer.getBounds().getCenter()).setContent(this.popupHtml(n)).openOn(this.map);
+    L.popup({maxWidth:280}).setLatLng(this.hiLayer.getBounds().getCenter()).setContent(this.popupHtml(n)).openOn(this.map);
   }
 
   // ======================= RBS zoning layer =======================
@@ -1442,6 +1455,7 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
     if(showP) h+='<div class="lp-sec'+(this._collP?' coll':'')+'"><div class="lp-hd" data-sec="P"><span class="tw">&#9662;</span> Projects <span id="pCount" class="pp-ct"></span></div><div class="lp-bd" id="projHost"></div></div>';
     if(showW) h+='<div class="lp-sec'+(this._collW?' coll':'')+'"><div class="lp-hd" data-sec="W"><span class="tw">&#9662;</span> Work history <span id="wCount" class="pp-ct"></span></div><div class="lp-bd" id="workHost"></div></div>';
     if(showI) h+='<div class="lp-sec'+(this._collI?' coll':'')+'"><div class="lp-hd" data-sec="I"><span class="tw">&#9662;</span> Inquiries <span id="iCount" class="pp-ct"></span></div><div class="lp-bd" id="inqHost"></div></div>';
+    const _st=el.scrollTop; const _ae:any=document.activeElement; const _focusId=(_ae&&(_ae.id==='pSearch'||_ae.id==='iSearch'))?_ae.id:'';
     el.innerHTML=h;
     const self=this;
     const hds=el.querySelectorAll('.lp-hd'); for(let i=0;i<hds.length;i++){ hds[i].addEventListener('click',function(){ const s=this.getAttribute('data-sec'); if(s==='Z') self._collZ=!self._collZ; else if(s==='P') self._collP=!self._collP; else if(s==='W') self._collW=!self._collW; else if(s==='I') self._collI=!self._collI; if(this.parentNode) this.parentNode.classList.toggle('coll'); }); }
@@ -1449,6 +1463,7 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
     if(showP){ this.buildProjectPanel(); this.renderProjectPins(); }
     if(showW){ this.buildWorkPanel(); }
     if(showI){ this.buildInquiryPanel(); this.renderInquiryPins(); }
+    el.scrollTop=_st; if(_focusId){ const _nf=el.querySelector('#'+_focusId) as any; if(_nf){ _nf.focus(); try{ const _vl=(_nf.value||'').length; _nf.setSelectionRange(_vl,_vl); }catch(e){} } }
   }
 
   private buildZPanel(): void {
@@ -1465,7 +1480,7 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
     h+='</select></div>';
     h+='<div class="lp-sub'+(this._collLegend?' coll':'')+'" data-leg="1"><div class="lp-subhd"><span class="tw">&#9662;</span> District legend</div><div class="lp-subbd">';
     ZJURS.forEach((j:any)=>{ if(!j.taggable) return; h+='<div class="zjh">'+esc(j.name)+'</div>'; j.zones.forEach((z:string)=>{ h+='<div class="zi"><span class="zsw" style="background:'+j.colors[z]+'"></span>'+z+' &middot; '+esc(j.names[z])+'</div>'; }); });
-for(var k=0;k<UCDD_ZONING.length;k++){ var uu=UCDD_ZONING[k]; var ufe=this._ucddCache&&this._ucddCache[uu.key]; if(!ufe||!ufe.length) continue; h+='<div class="zjh">'+esc(uu.label)+'</div>'; var seen:any={}; for(var fi=0;fi<ufe.length;fi++){ var vv=ufe[fi].properties[uu.field]; if(vv==null) continue; var vs=(''+vv).replace(/^\s+|\s+$/g,''); if(!vs||seen[vs.toUpperCase()]) continue; seen[vs.toUpperCase()]=1; var nm=ucddName(uu.key,vs); h+='<div class="zi"><span class="zsw" style="background:'+ucddColor(uu.key,vs)+'"></span>'+esc(vs)+(nm?' &middot; '+esc(nm):'')+'</div>'; } }
+for(var k=0;k<ZONING_LAYERS.length;k++){ var uu=ZONING_LAYERS[k]; var ufe=this._ucddCache&&this._ucddCache[uu.key]; if(!ufe||!ufe.length) continue; h+='<div class="zjh">'+esc(uu.label)+'</div>'; var seen:any={}; for(var fi=0;fi<ufe.length;fi++){ var vv=ufe[fi].properties[uu.field]; if(vv==null) continue; var vs=(''+vv).replace(/^\s+|\s+$/g,''); if(!vs||seen[vs.toUpperCase()]) continue; seen[vs.toUpperCase()]=1; var nm=ucddName(uu.key,vs); h+='<div class="zi"><span class="zsw" style="background:'+ucddColor(uu.key,vs)+'"></span>'+esc(vs)+(nm?' &middot; '+esc(nm):'')+'</div>'; } }
     h+='</div></div>';
     h+='<div class="zdiv"></div><div class="zjh">Other layers</div>';
     h+='<div class="zrow"><label><input type="checkbox" id="zfema"'+(this._femaOn?' checked':'')+'> FEMA flood (NFHL)</label><span class="zacc exact">live</span><input type="range" min="20" max="100" value="'+(this.femaLayer&&this.femaLayer.options?Math.round(this.femaLayer.options.opacity*100):55)+'" id="zfemaop"></div>';
@@ -1500,21 +1515,22 @@ for(var k=0;k<UCDD_ZONING.length;k++){ var uu=UCDD_ZONING[k]; var ufe=this._ucdd
     var b=this.map.getBounds(); var vw=[b.getWest(),b.getSouth(),b.getEast(),b.getNorth()];
     var z=this.map.getZoom();
     var on:any[]=[];
-    for(var i=0;i<UCDD_ZONING.length;i++){ var cc=UCDD_ZONING[i]; if(ucddHit(cc.bbox,vw)) on.push(cc); }
-    if(on.length===0 || z<UCDD_MINZOOM){ this.ucddLayer.clearLayers(); this._ucddCount=0; this._ucddBounds=null; this._ucddCache={}; if(this.map.hasLayer(this.ucddLayer)) this.map.removeLayer(this.ucddLayer); this.buildLegend(); return; }
+    for(var i=0;i<ZONING_LAYERS.length;i++){ var cc=ZONING_LAYERS[i]; if(ucddHit(cc.bbox,vw)) on.push(cc); }
+    if(on.length===0 || z<UCDD_MINZOOM){ var hadUcdd=this._ucddCount>0; this.ucddLayer.clearLayers(); this._ucddCount=0; this._ucddBounds=null; this._ucddCache={}; if(this.map.hasLayer(this.ucddLayer)) this.map.removeLayer(this.ucddLayer); if(hadUcdd) this.buildZPanel(); return; }
     if(!this.map.hasLayer(this.ucddLayer)) this.ucddLayer.addTo(this.map);
     if(this._ucddBounds && this._ucddZoom===z && this._ucddBounds.contains(b)) return;
     var pb=b.pad(0.4); this._ucddBounds=pb; this._ucddZoom=z;
     var env=[pb.getWest(),pb.getSouth(),pb.getEast(),pb.getNorth()].join(',');
     var res=(b.getEast()-b.getWest())/Math.max(1,this.map.getSize().x); var off=res>0?res:0.00001;
-    var seq= ++this._ucddSeq; var cache:any={}; var tmp:any[]=[]; var tot=0; var pending=on.length; var commit=function(){ if(self._ucddSeq!==seq) return; self._ucddCache=cache; self.ucddLayer.clearLayers(); for(var ti=0;ti<tmp.length;ti++){ self.ucddLayer.addLayer(tmp[ti]); } self._ucddCount=tot; self.buildLegend(); };
+    if(this._ucddCtrl){ try{this._ucddCtrl.abort();}catch(e){} } var uctrl=new AbortController(); this._ucddCtrl=uctrl;
+    var seq= ++this._ucddSeq; var cache:any={}; var tmp:any[]=[]; var tot=0; var anyFail=false; var pending=on.length; var commit=function(){ if(self._ucddSeq!==seq) return; if(anyFail) self._ucddBounds=null; self._ucddCache=cache; self.ucddLayer.clearLayers(); for(var ti=0;ti<tmp.length;ti++){ self.ucddLayer.addLayer(tmp[ti]); } self._ucddCount=tot; self.buildZPanel(); };
     for(var k2=0;k2<on.length;k2++){
       (function(c:any){
         var qp:any={where:(c.where?c.where:'1=1'),geometry:env,geometryType:'esriGeometryEnvelope',inSR:4326,spatialRel:'esriSpatialRelIntersects',outFields:c.field,returnGeometry:true,outSR:4326,maxAllowableOffset:off,geometryPrecision:6,resultRecordCount:2000,f:'json'};
         var mkLayer=function(feats:any){ return L.geoJSON(feats,{pane:'ucdd',renderer:self._ucddRenderer,style:function(ft:any){ return {color:'#444',weight:0.4,fillColor:ucddColor(c.key,ft.properties[c.field]),fillOpacity:0.55}; }}); };
-        if(c.layers&&c.layers.length){ var sub=c.layers.length; var merged:any[]=[]; var finRow=function(){ if(self._ucddSeq===seq){ cache[c.key]=merged; tmp.push(mkLayer(merged)); tot+=merged.length; } pending--; if(pending<=0) commit(); }; for(var li=0;li<c.layers.length;li++){ var surl=c.url+'/'+c.layers[li]+'/query?'+qs(qp); self.arcgisFetch(surl).then(function(d:any){ if(self._ucddSeq===seq && d && !d.error){ var fs=esriToFeatures(d); for(var xi=0;xi<fs.length;xi++) merged.push(fs[xi]); } sub--; if(sub<=0) finRow(); }).catch(function(){ sub--; if(sub<=0) finRow(); }); } return; }
+        if(c.layers&&c.layers.length){ var sub=c.layers.length; var merged:any[]=[]; var finRow=function(){ if(self._ucddSeq===seq){ cache[c.key]=merged; tmp.push(mkLayer(merged)); tot+=merged.length; } pending--; if(pending<=0) commit(); }; for(var li=0;li<c.layers.length;li++){ var surl=c.url+'/'+c.layers[li]+'/query?'+qs(qp); self.arcgisFetch(surl,uctrl.signal).then(function(d:any){ if(self._ucddSeq===seq && d && !d.error){ var fs=esriToFeatures(d); for(var xi=0;xi<fs.length;xi++) merged.push(fs[xi]); } sub--; if(sub<=0) finRow(); }).catch(function(){ anyFail=true; sub--; if(sub<=0) finRow(); }); } return; }
         var url=(c.url?c.url:(UCDD_BASE+'/'+c.service+'/FeatureServer/'+c.layer))+'/query?'+qs(qp);
-        self.arcgisFetch(url).then(function(d:any){ if(self._ucddSeq===seq && d && !d.error){ var feats=esriToFeatures(d); cache[c.key]=feats; tmp.push(mkLayer(feats)); tot+=feats.length; } pending--; if(pending<=0) commit(); }).catch(function(){ pending--; if(pending<=0) commit(); });
+        self.arcgisFetch(url,uctrl.signal).then(function(d:any){ if(self._ucddSeq===seq && d && !d.error){ var feats=esriToFeatures(d); cache[c.key]=feats; tmp.push(mkLayer(feats)); tot+=feats.length; } pending--; if(pending<=0) commit(); }).catch(function(){ anyFail=true; pending--; if(pending<=0) commit(); });
       })(on[k2]);
     }
   }
@@ -1751,7 +1767,9 @@ for(var k=0;k<UCDD_ZONING.length;k++){ var uu=UCDD_ZONING[k]; var ufe=this._ucdd
       const st=j.Status||'(no status)';
       const label=j.JobLabel||(j.Title+(j.County?' — '+j.County:''));
       const folder=j.FolderURL?'<a class="dls-pop-a" href="'+esc(j.FolderURL)+'" target="_blank" rel="noopener">Open project folder &#8599;</a>':'';
-      const html='<div class="dls-pop"><b>'+esc(label)+'</b>'+(j.Status?'<div class="m">'+esc(j.Status)+(j.JobType?' &middot; '+esc(j.JobType):'')+'</div>':'')+(j.Address?'<div class="m">'+esc(j.Address)+'</div>':'')+folder+'</div>';
+      let prows=''; const prow=(k:string,v:any)=>{ if(v) prows+='<tr><td class="k">'+k+'</td><td>'+esc(v)+'</td></tr>'; };
+      prow('Status',j.Status); prow('Type',j.JobType); prow('Address',j.Address);
+      const html='<div class="dls-pop dls-inqpop"><b>'+esc(label)+'</b><table>'+prows+'</table>'+folder+'</div>';
       const m=L.circleMarker([j.Lat,j.Lng],{radius:7,fillColor:colorFor(st),color:'#fff',weight:2,fillOpacity:0.9,pane:'projects',renderer:self._projRenderer});
       m.bindPopup(html,{maxWidth:260}); m.addTo(self.projectLayer);
     });
@@ -1842,7 +1860,7 @@ for(var k=0;k<UCDD_ZONING.length;k++){ var uu=UCDD_ZONING[k]; var ufe=this._ucdd
         const c=q.county||'(blank)'; if(self.iqCountyOn[c]===undefined) self.iqCountyOn[c]=true;
         const y=q.year||'(blank)'; if(self.iqYearOn[y]===undefined) self.iqYearOn[y]=true;
       }
-      self.setStatus('Locating '+arr.length+' inquiries on their parcels…'); self.resolveInquiryParcels();
+      self.setStatus('Locating '+arr.length+' inquiries on their parcels…'); self.afterParcels(()=>self.resolveInquiryParcels());
     }).catch((e:any)=>{ this.setStatus('Inquiries: could not load IQ list ('+e+')'); });
   }
 
@@ -1862,7 +1880,10 @@ for(var k=0;k<UCDD_ZONING.length;k++){ var uu=UCDD_ZONING[k]; var ufe=this._ucdd
     for(let ci=0;ci<keys.length;ci++){ const g=byCounty[keys[ci]]; for(let s=0;s<g.items.length;s+=CH){ groups.push({county:g.county,items:g.items.slice(s,s+CH)}); } }
     let pending=groups.length;
     if(pending===0){ self.finishInquiryResolve(); return; }
-    for(let k=0;k<groups.length;k++){ this.resolveCountyParcels(groups[k], function(){ pending--; if(pending<=0) self.finishInquiryResolve(); }); }
+    // Cap concurrency at 2 so inquiry resolution doesn't flood the same statewide service the viewport parcels use.
+    let gi=0;
+    const step=()=>{ if(gi>=groups.length) return; const g=groups[gi++]; this.resolveCountyParcels(g, function(){ pending--; if(pending<=0){ self.finishInquiryResolve(); } else { step(); } }); };
+    for(let k0=0;k0<2&&k0<groups.length;k0++) step();
   }
 
   private resolveCountyParcels(grp:any, done:any): void {
@@ -1905,13 +1926,13 @@ for(var k=0;k<UCDD_ZONING.length;k++){ var uu=UCDD_ZONING[k]; var ufe=this._ucdd
     for(let i=0;i<this.inquiries.length;i++){ const q=this.inquiries[i];
       if(!self.iqVisible(q)) continue; const g=self.inqGeo[q.Id]; if(!g) continue; shown++;
       const m=L.marker([g.center[1],g.center[0]],{icon:icon,pane:'inquiries',title:q.client||q.quote});
-      m.bindPopup(self.inquiryPopupHtml(q),{maxWidth:300});
+      m.bindPopup(self.inquiryPopupHtml(q),{maxWidth:280});
       m.on('click',function(){ try{ self.selLayer.clearLayers(); self.selLayer.addData(g.feat); self.selFeat=g.feat; self.selN=normalize((g.feat.properties as any),SOURCES[0]); }catch(e){} });
       m.addTo(self.inqLayer);
     }
     this.updateInqCount(shown);
   }
-  private updateInqCount(shown:number): void { const c=this.domElement.querySelector('#iCount'); if(c) c.textContent=shown+' shown · '+this._iqLocated+' located · '+this._iqUnplaced+' not located'; }
+  private updateInqCount(shown:number): void { const c=this.domElement.querySelector('#iCount'); if(c) c.textContent=shown+' of '+this._iqLocated+' located · '+this._iqUnplaced+' unplaced'; }
 
   private inquiryPopupHtml(q:any): string {
     let rows='';
@@ -1967,7 +1988,7 @@ for(var k=0;k<UCDD_ZONING.length;k++){ var uu=UCDD_ZONING[k]; var ufe=this._ucdd
     const counts=this.iqCounts(keyFn);
     const keys=Object.keys(counts).sort((a:any,b:any)=>{ if(dim==='status'){ const ia=IQ_STATUS_ORDER.indexOf(a),ib=IQ_STATUS_ORDER.indexOf(b); return (ia<0?99:ia)-(ib<0?99:ib); } if(dim==='year') return b.localeCompare(a); return a.localeCompare(b); });
     const self=this; el.innerHTML='';
-    for(let i=0;i<keys.length;i++){ const k=keys[i]; const row=document.createElement('div'); row.className='pp-row'+(state[k]===false?' off':''); row.innerHTML='<span class="pp-sq" style="background:'+IQ_COLOR+'"></span><span class="pp-nm">'+esc(k||'(blank)')+'</span><span class="pp-n">'+counts[k]+'</span>'; row.onclick=function(){ state[k]=state[k]===false; self.renderInquiryPins(); self.renderInqSections(); }; el.appendChild(row); }
+    for(let i=0;i<keys.length;i++){ const k=keys[i]; const row=document.createElement('div'); row.className='pp-row'+(state[k]===false?' off':''); const mark=dim==='status'?'<span class="pp-sq" style="background:'+IQ_COLOR+'"></span>':'<span class="pp-sq"></span>'; row.innerHTML=mark+'<span class="pp-nm">'+esc(k||'(blank)')+'</span><span class="pp-n">'+counts[k]+'</span>'; row.onclick=function(){ state[k]=state[k]===false; self.renderInquiryPins(); self.renderInqSections(); }; el.appendChild(row); }
   }
   private iqAllOn(dim:string): void { const st = dim==='status'?this.iqStatusOn:dim==='county'?this.iqCountyOn:dim==='year'?this.iqYearOn:null; if(!st) return; const ks=Object.keys(st); for(let i=0;i<ks.length;i++) st[ks[i]]=true; this.renderInquiryPins(); this.renderInqSections(); }
   private iqReset(): void { const self=this; const ks=Object.keys(this.iqStatusOn); for(let i=0;i<ks.length;i++){ self.iqStatusOn[ks[i]]=IQ_DEFAULT_STATUS_ON.indexOf(ks[i])>=0; } [this.iqCountyOn,this.iqYearOn].forEach((st:any)=>{ const k2=Object.keys(st); for(let j=0;j<k2.length;j++) st[k2[j]]=true; }); this.iqSearch=''; const si=this.domElement.querySelector('#iSearch') as any; if(si) si.value=''; this.renderInquiryPins(); this.renderInqSections(); }
@@ -1988,11 +2009,12 @@ for(var k=0;k<UCDD_ZONING.length;k++){ var uu=UCDD_ZONING[k]; var ufe=this._ucdd
     var env=[pb.getWest(),pb.getSouth(),pb.getEast(),pb.getNorth()].join(',');
     var res=(b.getEast()-b.getWest())/Math.max(1,this.map.getSize().x); var off=res>0?res:0.00001;
     var url=ROAD_TDOT+'?'+qs({where:ROAD_COUNTY_IN,geometry:env,geometryType:'esriGeometryEnvelope',inSR:4326,spatialRel:'esriSpatialRelIntersects',outFields:'RTE_NME,NBR_TENN_CNTY,GOVT_CTRL',returnGeometry:true,outSR:4326,maxAllowableOffset:off,geometryPrecision:6,resultRecordCount:2000,f:'json'});
+    if(this._roadCtrl){ try{this._roadCtrl.abort();}catch(e){} } var rctrl=new AbortController(); this._roadCtrl=rctrl;
     var seq= ++this._roadSeq;
-    this.arcgisFetch(url).then(function(d:any){ if(self._roadSeq!==seq) return; if(!d||d.error) return; var feats:any=esriLinesToFeatures(d); var drawn:any[]=[];
+    this.arcgisFetch(url,rctrl.signal).then(function(d:any){ if(self._roadSeq!==seq) return; if(!d||d.error){ self._roadBounds=null; return; } var feats:any=esriLinesToFeatures(d); var drawn:any[]=[];
       for(var i=0;i<feats.length;i++){ var p:any=feats[i].properties; var cty:any=(''+(p.NBR_TENN_CNTY||'')).toLowerCase(); var rs:any=rsLookup(cty,p.RTE_NME); if(!rs && /State/.test(''+(p.GOVT_CTRL||''))){ rs={bucket:'paved'}; } if(!rs) continue; feats[i].properties.__b=rs.bucket; drawn.push(feats[i]); }
       self.roadLayer.clearLayers(); if(drawn.length) self.roadLayer.addData(drawn);
-    }).catch(function(){});
+    }).catch(function(){ if(self._roadSeq===seq) self._roadBounds=null; });
   }
 
   private applyFema(): void { if(!this.femaLayer) return; if(this._femaOn && this.zoningView){ if(!this.map.hasLayer(this.femaLayer)){ this.femaLayer.addTo(this.map); } } else if(this.map.hasLayer(this.femaLayer)){ this.map.removeLayer(this.femaLayer); } }
