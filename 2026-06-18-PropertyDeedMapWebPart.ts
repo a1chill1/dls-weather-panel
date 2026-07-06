@@ -1737,15 +1737,39 @@ for(var k=0;k<ZONING_LAYERS.length;k++){ var uu=ZONING_LAYERS[k]; var ufe=this._
   // ======================= Projects (Coverage Map) layer =======================
   private loadProjects(): void {
     if(this._projLoaded){ this.buildLegend(); return; }
-    const url = this.context.pageContext.web.absoluteUrl + "/_api/web/lists(guid'" + this.projectsListGuid + "')/items?$top=500&$select=Id,Title,JobLabel,Lat,Lng,FolderURL,County,ProjectStatus,JobTypeStandard,Property_x0020_Address,FNLTDate";
+    const url = this.context.pageContext.web.absoluteUrl + "/_api/web/lists(guid'" + this.projectsListGuid + "')/items?$top=500&$select=Id,Title,JobLabel,Lat,Lng,FolderURL,County,Tax_x0020_Map,Parcel_x0020_Number,ProjectStatus,JobTypeStandard,Property_x0020_Address,FNLTDate";
     this.setStatus('Loading projects…');
     this.spGet(url).then((d:any)=>{
       const items=(d&&d.value)||[]; const arr:any[]=[];
-      items.forEach((x:any)=>{ if(x.Lat==null||x.Lng==null) return; const t=(x.Title==null?'':String(x.Title)); const yr=/^\d{6}/.test(t)?('20'+t.substring(0,2)):'(blank)'; const county=(x.County==null?'':String(x.County)).replace(/^\d+\s*-\s*/,'').replace(/,?\s*(TN|KY)\b.*$/i,'').trim(); arr.push({ Id:x.Id, Title:t, JobLabel:x.JobLabel||'', Lat:x.Lat, Lng:x.Lng, FolderURL:x.FolderURL||'', County:county, Status:x.ProjectStatus||'', JobType:x.JobTypeStandard||'', Address:x.Property_x0020_Address||'', Year:yr, Deadline:deadlineBucket(x.ProjectStatus||'', x.FNLTDate) }); });
+      items.forEach((x:any)=>{ const hasPar=!!(x.Tax_x0020_Map&&x.Parcel_x0020_Number); if((x.Lat==null||x.Lng==null)&&!hasPar) return; const t=(x.Title==null?'':String(x.Title)); const yr=/^\d{6}/.test(t)?('20'+t.substring(0,2)):'(blank)'; const ccode=(String(x.County||'').match(/([0-9]{3})/)||[])[1]||''; const county=(x.County==null?'':String(x.County)).replace(/^\d+\s*-\s*/,'').replace(/,?\s*(TN|KY)\b.*$/i,'').trim(); arr.push({ Id:x.Id, Title:t, JobLabel:x.JobLabel||'', Lat:x.Lat, Lng:x.Lng, Cc:ccode, TaxMap:x.Tax_x0020_Map||'', Parcel:x.Parcel_x0020_Number||'', FolderURL:x.FolderURL||'', County:county, Status:x.ProjectStatus||'', JobType:x.JobTypeStandard||'', Address:x.Property_x0020_Address||'', Year:yr, Deadline:deadlineBucket(x.ProjectStatus||'', x.FNLTDate) }); });
       this.projects=arr; this._projLoaded=true;
       arr.forEach((j:any)=>{ const s=j.Status||'(no status)'; if(this.pStatusOn[s]===undefined) this.pStatusOn[s]=DEFAULT_STATUS_ON.indexOf(s)>=0; const c=j.County||'(blank)'; if(this.pCountyOn[c]===undefined) this.pCountyOn[c]=true; const ty=j.JobType||'(blank)'; if(this.pTypeOn[ty]===undefined) this.pTypeOn[ty]=true; const y=j.Year||'(blank)'; if(this.pYearOn[y]===undefined) this.pYearOn[y]=true; const dl=j.Deadline||'No date'; if(this.pDeadlineOn[dl]===undefined) this.pDeadlineOn[dl]=true; });
       this.buildLegend(); this.setStatus(this.projects.length+' projects loaded');
+      this.resolveProjectCentroids();
     }).catch((e:any)=>{ this.setStatus('Projects: could not load WIP jobs ('+e+')'); });
+  }
+
+  // v50: plot each TN project at its true parcel centroid (County + Tax Map + Parcel, keyless
+  // TN statewide service) instead of the stored WIP Lat/Lng — which Flow 9 sets to a city-center
+  // point. Falls back to the stored Lat/Lng for KY / no-parcel rows or any lookup miss. Batched
+  // (25/query, sequential) to stay nimble; re-renders once each batch resolves.
+  private resolveProjectCentroids(): void {
+    const todo:any[]=[];
+    this.projects.forEach((j:any)=>{ if(!j.Cc||!j.TaxMap||!j.Parcel) return; const map=wkNormMap(j.TaxMap); const p5=wkNorm5(j.Parcel); if(!map||!p5) return; j._map=map; j._p5=p5; todo.push(j); });
+    if(!todo.length) return;
+    this.resolveCentroidChunk(todo,0);
+  }
+  private resolveCentroidChunk(todo:any[], i:number): void {
+    const self=this;
+    if(i>=todo.length){ this.renderProjectPins(); return; }
+    const chunk=todo.slice(i,i+25);
+    const where=chunk.map((j:any)=>"(PARCELID LIKE '"+j.Cc+" "+j._map+"%' AND PARCELID LIKE '%"+j._p5+" %')").join(' OR ');
+    const url=WK_TN_SVC+"?where="+encodeURIComponent(where)+"&outFields=PARCELID&returnGeometry=false&returnCentroid=true&outSR=4326&resultRecordCount=1000&f=json";
+    this.arcgisFetch(url).then((d:any)=>{
+      const fs=(d&&d.features)||[];
+      for(let k=0;k<fs.length;k++){ const pid=String(fs[k].attributes.PARCELID); const ct=fs[k].centroid; if(!ct||ct.x==null||ct.y==null) continue; const cc=pid.substring(0,3); const mp=pid.substring(4,8).replace(/\s+$/,''); const pp=pid.substring(11,16); for(let q=0;q<chunk.length;q++){ const j=chunk[q]; if(j.Cc===cc&&j._map===mp&&j._p5===pp){ j.Lat=ct.y; j.Lng=ct.x; j._pc=true; break; } } }
+      self.resolveCentroidChunk(todo,i+25);
+    }).catch(()=>{ self.resolveCentroidChunk(todo,i+25); });
   }
 
   private projVisible(j:any): boolean {
@@ -1763,7 +1787,8 @@ for(var k=0;k<ZONING_LAYERS.length;k++){ var uu=ZONING_LAYERS[k]; var ufe=this._
     if(!this._projOn){ this.updateProjCount(0); return; }
     let shown=0; const self=this;
     this.projects.forEach((j:any)=>{
-      if(!self.projVisible(j)) return; shown++;
+      if(!self.projVisible(j)) return;
+      if(j.Lat==null||j.Lng==null) return; shown++;
       const st=j.Status||'(no status)';
       const label=j.JobLabel||(j.Title+(j.County?' — '+j.County:''));
       const folder=j.FolderURL?'<a class="dls-pop-a" href="'+esc(j.FolderURL)+'" target="_blank" rel="noopener">Open project folder &#8599;</a>':'';
