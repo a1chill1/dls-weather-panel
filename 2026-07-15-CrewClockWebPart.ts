@@ -234,6 +234,10 @@ export default class DlsCrewClockWebPart extends BaseClientSideWebPart<IDlsCrewC
     this.wipAll = lsGet(LS_WIP) || [];
 
     window.addEventListener('online', this.onOnline);
+    // Crews open this page from the 6:45 AM Teams link onto a tab that may have
+    // been loaded days ago. refresh() otherwise runs only at init and on
+    // 'online', so a foregrounded page could show a stale schedule.
+    document.addEventListener('visibilitychange', this.onVisibility);
     this.startGeo();
 
     // Live elapsed clock on the active-session view. Skipped while the DONE
@@ -249,11 +253,16 @@ export default class DlsCrewClockWebPart extends BaseClientSideWebPart<IDlsCrewC
 
   protected onDispose(): void {
     window.removeEventListener('online', this.onOnline);
+    document.removeEventListener('visibilitychange', this.onVisibility);
     if (this.tick) clearInterval(this.tick);
     if (this.watchId != null && navigator.geolocation) navigator.geolocation.clearWatch(this.watchId);
   }
 
   private onOnline = (): void => { this.flushQueue(); this.refresh(); };
+
+  // refresh() also flushes the offline queue, so a foregrounded page both
+  // refetches today's schedule and sends anything saved while out of signal.
+  private onVisibility = (): void => { if (document.visibilityState === 'visible') this.refresh(); };
 
   protected get dataVersion(): Version { return Version.parse('1.0'); }
 
