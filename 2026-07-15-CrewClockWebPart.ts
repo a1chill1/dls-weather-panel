@@ -58,7 +58,10 @@ const FS = {
 
 // WIP Tracking — verified live 2026-07-15.
 const WIP = {
-  label:        'JobLabel',                         // Text
+  label:        'MapLabel',                         // Calculated. Was 'JobLabel', changed 2026-07-16:
+                                                    // JobLabel is null on 46 of 209 rows (22%), and
+                                                    // they're the newest jobs (260601+) — exactly what
+                                                    // crews log against. MapLabel is null on zero rows.
   lat:          'Lat',                              // Number
   lng:          'Lng',                              // Number
   precision:    'GeocodePrecision'                  // Text. LIVE VALUES: 'Parcel' (22), 'Address' (8),
