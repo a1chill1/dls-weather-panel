@@ -624,22 +624,29 @@ export default class DlsCrewClockWebPart extends BaseClientSideWebPart<IDlsCrewC
     }
 
     // Ambiguous: a short stack, nearest first.
-    if (withDist.length > 1) {
+    const stacked = withDist.length > 1 ? withDist.slice(0, 3) : [];
+    if (stacked.length) {
       h += '<p class="cc-h">Which job?</p>';
-      for (const j of withDist.slice(0, 3)) {
+      for (const j of stacked) {
         h += '<button class="cc-btn sm" data-act="start" data-id="' + j.wipId + '"' + (this.busy ? ' disabled' : '') + '>'
           + 'START — ' + esc(j.label) + '<span class="cc-sub">' + fmtMi(j.distMi as number) + ' away</span></button>';
       }
     }
 
-    // No fix / City-precision only: plain tap list, no distance claims.
-    const rest = ranked.filter(j => j.distMi == null);
+    // Everything the branches above didn't render: no fix, City-precision, a measured
+    // job too far to win outright, or the tail of a long stack. A distance is shown
+    // only where we have one. Found live 2026-07-17: with exactly ONE scheduled job
+    // more than NEAR_MI away, `clear` was false and the stack needed two, so the
+    // picker drew no job button at all.
+    const rest = ranked.filter(j => stacked.indexOf(j) < 0);
     if (rest.length) {
       if (this.geoError) h += '<div class="cc-warn">' + esc(this.geoError) + '</div>';
       h += '<p class="cc-h">Today\'s schedule</p>';
       for (const j of rest) {
         h += '<button class="cc-btn sm cc-alt" data-act="start" data-id="' + j.wipId + '"' + (this.busy ? ' disabled' : '') + '>'
-          + esc(j.label) + '</button>';
+          + esc(j.label)
+          + (j.distMi != null ? '<span class="cc-sub">' + fmtMi(j.distMi as number) + ' away</span>' : '')
+          + '</button>';
       }
     }
 
