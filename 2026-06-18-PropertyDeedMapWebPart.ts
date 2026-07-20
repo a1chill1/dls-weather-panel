@@ -1979,6 +1979,8 @@ for(var k=0;k<ZONING_LAYERS.length;k++){ var uu=ZONING_LAYERS[k]; var ufe=this._
   }
 
   // Resolve the quote's folder under References/Quotes by QuoteNumber (startswith), like the job-folder resolver.
+  // Quote folders are filed under a per-month parent (Q2607-00228 -> Quotes/Q2607/Q2607-00228 CLIENT). The flat
+  // root is tried second so a folder not yet filed into its month still resolves.
   private openQuoteFolder(quoteNo:string): void {
     if(!quoteNo){ this.setStatus('No quote number on this inquiry.'); return; }
     const base=this.context.pageContext.web.absoluteUrl; const host=base.replace(/\/sites\/.*$/,'');
@@ -1987,9 +1989,15 @@ for(var k=0;k<ZONING_LAYERS.length;k++){ var uu=ZONING_LAYERS[k]; var ufe=this._
     const open=(url:string)=>{ try{ if(w) w.location=url; else window.open(url,'_blank'); }catch(e){} };
     const libUrl=host+(sp+IQ_QUOTES_REL).replace(/ /g,'%20');
     const cached=this._quoteFolderCache[quoteNo]; if(cached){ open(cached); this.setStatus('Opened quote folder.'); return; }
-    const parentRel=(sp+IQ_QUOTES_REL).replace(/ /g,'%20');
-    const u=base+"/_api/web/GetFolderByServerRelativeUrl('"+parentRel.replace(/'/g,"''")+"')/Folders?$select=Name,ServerRelativeUrl&$filter=startswith(Name,'"+quoteNo.replace(/'/g,"''")+"')&$top=1";
-    this.spGet(u).then((d:any)=>{ const v=(d&&d.value)||[]; if(v.length){ const fu=host+v[0].ServerRelativeUrl; self._quoteFolderCache[quoteNo]=fu; open(fu); self.setStatus('Opened quote folder for '+quoteNo); } else { open(libUrl); self.setStatus('Quote folder for '+quoteNo+' not found — opened the Quotes library.'); } }).catch(()=>{ open(libUrl); });
+    const ym=quoteNo.substring(0,5);
+    const parents=(ym.length===5&&ym!==quoteNo)?[IQ_QUOTES_REL+'/'+ym, IQ_QUOTES_REL]:[IQ_QUOTES_REL];
+    const tryNext=(idx:number)=>{
+      if(idx>=parents.length){ open(libUrl); self.setStatus('Quote folder for '+quoteNo+' not found — opened the Quotes library.'); return; }
+      const parentRel=(sp+parents[idx]).replace(/ /g,'%20');
+      const u=base+"/_api/web/GetFolderByServerRelativeUrl('"+parentRel.replace(/'/g,"''")+"')/Folders?$select=Name,ServerRelativeUrl&$filter=startswith(Name,'"+quoteNo.replace(/'/g,"''")+"')&$top=1";
+      self.spGet(u).then((d:any)=>{ const v=(d&&d.value)||[]; if(v.length){ const fu=host+v[0].ServerRelativeUrl; self._quoteFolderCache[quoteNo]=fu; open(fu); self.setStatus('Opened quote folder for '+quoteNo); } else tryNext(idx+1); }).catch(()=>tryNext(idx+1));
+    };
+    tryNext(0);
   }
 
   // ---- Inquiries filter panel (mirrors the Projects panel) ----
