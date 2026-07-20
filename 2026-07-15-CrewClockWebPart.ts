@@ -91,6 +91,11 @@ const LS_SESSION = 'dls.crewclock.session.v1';
 const LS_QUEUE   = 'dls.crewclock.queue.v1';
 const LS_FS      = 'dls.crewclock.fs.v1';
 const LS_WIP     = 'dls.crewclock.wip.v1';
+// Set once per device (v1.0.0.6). All four devices share the Fielding@ login, so
+// SharePoint 'Created By' reads "Field Crew" on every row and carries no attribution.
+// This is the only thing that records WHO tapped, as opposed to who the schedule
+// SAID would be there.
+const LS_CHIEF   = 'dls.crewclock.chief.v1';
 
 const PARCEL_PRECISION = /^(parcel|address|point|rooftop)/i; // anything but City
 
@@ -181,6 +186,12 @@ function esc(s: any): string {
 // ---------------------------------------------------------------------------
 
 interface IJob {
+  // The FS ROW id, not the project id. Jobs are keyed on this because the office
+  // puts two crews on one big job as TWO Field Schedule rows against the same
+  // project — keying on wipId collapsed them to the first row, so the second
+  // crew's tap silently wrote the first crew's CrewAssignment. 0 = no FS row
+  // (the "job not on today's list" search path).
+  fsId: number;
   wipId: number;
   label: string;
   lat: number | null;
@@ -191,9 +202,11 @@ interface IJob {
 }
 
 interface ISession {
+  fsId: number;
   wipId: number;
   label: string;
   crew: string[];
+  chief: string;         // snapshot at START — see startedBy()
   startIso: string;
   distMi: number | null;
 }
@@ -209,6 +222,11 @@ export interface IDlsCrewClockWebPartProps {
   timeLogListGuid: string;
   fieldScheduleListTitle: string;
   wipListGuid: string;
+  // Comma-separated. MUST match the Crew Time Log 'CrewChief' Choice values
+  // exactly — a mismatch fails the POST with a 400 and queues the row on the
+  // device. Property rather than a constant so the roster tracks the column
+  // without a rebuild. Live value 2026-07-20: "Cody, Desmond".
+  crewChiefs: string;
 }
 
 // ============================================================================
@@ -217,6 +235,7 @@ export default class DlsCrewClockWebPart extends BaseClientSideWebPart<IDlsCrewC
   private jobsToday: IJob[] = [];
   private wipAll: any[] = [];
   private session: ISession | null = null;
+  private chief: string = '';
   private fix: { lat: number; lng: number } | null = null;
   private geoError: string = '';
   private status: string = '';
@@ -230,6 +249,7 @@ export default class DlsCrewClockWebPart extends BaseClientSideWebPart<IDlsCrewC
 
   protected onInit(): Promise<void> {
     this.session = lsGet(LS_SESSION);
+    this.chief = lsGet(LS_CHIEF) || '';
     this.jobsToday = lsGet(LS_FS) || [];
     this.wipAll = lsGet(LS_WIP) || [];
 
@@ -290,6 +310,23 @@ export default class DlsCrewClockWebPart extends BaseClientSideWebPart<IDlsCrewC
     };
     if (extra) { for (const k in extra) { headers[k] = extra[k]; } }
     return this.context.spHttpClient.post(url, this.cfg(), { headers: headers, body: body ? JSON.stringify(body) : '{}' });
+  }
+
+  // ---- crew identity ------------------------------------------------------
+
+  private chiefList(): string[] {
+    const raw = '' + (this.properties.crewChiefs || '');
+    const out: string[] = [];
+    const parts = raw.split(',');
+    for (const p of parts) { const n = p.replace(/^\s+|\s+$/g, ''); if (n) out.push(n); }
+    return out;
+  }
+
+  // Who to attribute a row to. Prefer the session snapshot so a device handed to
+  // the other crew mid-job still credits whoever tapped START. Falls back to the
+  // device chief for sessions written by 1.0.0.5, which have no chief key.
+  private startedBy(): string {
+    return (this.session && this.session.chief) ? this.session.chief : this.chief;
   }
 
   // ---- geolocation --------------------------------------------------------
@@ -359,6 +396,7 @@ export default class DlsCrewClockWebPart extends BaseClientSideWebPart<IDlsCrewC
         const lng = typeof w[WIP.lng] === 'number' ? w[WIP.lng] : parseFloat(w[WIP.lng]);
         const hasCoord = isFinite(lat) && isFinite(lng);
         jobs.push({
+          fsId: row.Id,
           wipId: pid,
           label: w[WIP.label] || ('WIP ' + pid),
           lat: hasCoord ? lat : null,
@@ -392,8 +430,15 @@ export default class DlsCrewClockWebPart extends BaseClientSideWebPart<IDlsCrewC
 
   // ---- the write ----------------------------------------------------------
 
+  // CrewChief = who actually tapped (device truth). CrewOnSite = what the schedule
+  // said. When they disagree — a crew reassigned that morning — BOTH are written and
+  // the office sees the disagreement in the list and in Flow 39's email. Deliberately
+  // NOT AutoFlagged: that flag means "the time was guessed, go check it", and
+  // overloading it with crew mismatch would dilute a signal the office is starting to
+  // rely on (decision: Alex, 2026-07-20).
   private buildBody(job: { wipId: number; label: string; crew: string[] }, start: Date, end: Date,
-                    fieldComplete: boolean, distMi: number | null, source: string, flagged: boolean): any {
+                    fieldComplete: boolean, distMi: number | null, source: string, flagged: boolean,
+                    chief: string): any {
     const s = roundHalfHour(start);
     const e = enforceMinEnd(s, roundHalfHour(end));
     const body: any = {};
@@ -403,6 +448,11 @@ export default class DlsCrewClockWebPart extends BaseClientSideWebPart<IDlsCrewC
     body[F.fieldComplete] = !!fieldComplete;
     body[F.entrySource]   = source;
     body[F.autoFlagged]   = !!flagged;
+    // Flow 39's approval email renders the crew column from CrewChief only —
+    // CrewOnSite is an array of {Id,Value} the expression language can't map over
+    // (decision (c), 2026-07-16). Before 1.0.0.6 nothing ever wrote this, so every
+    // app row showed a blank crew in the daily email.
+    if (chief) body[F.crewChief] = chief;
     // MultiChoice under odata=nometadata takes a PLAIN ARRAY — the {results:[...]}
     // wrapper is odata=verbose only and 400s here (verified live 2026-07-15).
     if (job.crew && job.crew.length) body[F.crewOnSite] = job.crew;
@@ -470,7 +520,8 @@ export default class DlsCrewClockWebPart extends BaseClientSideWebPart<IDlsCrewC
 
   private start(job: IJob): void {
     this.session = {
-      wipId: job.wipId, label: job.label, crew: job.crew,
+      fsId: job.fsId, wipId: job.wipId, label: job.label, crew: job.crew,
+      chief: this.chief,
       startIso: roundHalfHour(new Date()).toISOString(),
       distMi: job.distMi
     };
@@ -481,14 +532,14 @@ export default class DlsCrewClockWebPart extends BaseClientSideWebPart<IDlsCrewC
 
   private done(fieldComplete: boolean): void {
     const s = this.session; if (!s) return;
-    const body = this.buildBody(s, new Date(s.startIso), new Date(), fieldComplete, s.distMi, 'CrewClockApp', false);
+    const body = this.buildBody(s, new Date(s.startIso), new Date(), fieldComplete, s.distMi, 'CrewClockApp', false, this.startedBy());
     this.submit(body, s.label);
   }
 
   // End an open session at an explicit time (stale close-out / end-now banner).
   private endAt(end: Date, flagged: boolean, source: string): void {
     const s = this.session; if (!s) return;
-    const body = this.buildBody(s, new Date(s.startIso), end, false, s.distMi, source, flagged);
+    const body = this.buildBody(s, new Date(s.startIso), end, false, s.distMi, source, flagged, this.startedBy());
     this.submit(body, s.label);
   }
 
@@ -497,7 +548,8 @@ export default class DlsCrewClockWebPart extends BaseClientSideWebPart<IDlsCrewC
       const p = hhmm.split(':');
       return new Date(day.getFullYear(), day.getMonth(), day.getDate(), parseInt(p[0], 10), parseInt(p[1], 10), 0, 0);
     };
-    const body = this.buildBody(job, mk(startHhmm), mk(endHhmm), false, null, 'CrewClockApp', true);
+    // No session here, so the device chief is the only identity available.
+    const body = this.buildBody(job, mk(startHhmm), mk(endHhmm), false, null, 'CrewClockApp', true, this.chief);
     this.submit(body, job.label);
   }
 
@@ -544,6 +596,13 @@ export default class DlsCrewClockWebPart extends BaseClientSideWebPart<IDlsCrewC
   public render(): void {
     if (!this.domElement) return;    // an async refresh/tick can land before the first render
     if (this._confirming) return;    // never repaint over the DONE-confirm mid-decision
+
+    // One-time identity gate. Guarded on the roster being configured so a blank
+    // crewChiefs property degrades to pre-1.0.0.6 behaviour rather than locking a
+    // crew out of a working app. Deploy outside field hours: this draws OVER an
+    // active session, which is recoverable (startedBy() falls back) but confusing.
+    if (!this.chief && this.chiefList().length) { this.renderChiefGate(); return; }
+
     const q: IPending[] = lsGet(LS_QUEUE) || [];
     let h = this.css() + '<div class="cc">';
 
@@ -561,6 +620,28 @@ export default class DlsCrewClockWebPart extends BaseClientSideWebPart<IDlsCrewC
 
     this.domElement.innerHTML = h;
     this.wire();
+  }
+
+  private renderChiefGate(): void {
+    let h = this.css() + '<div class="cc">'
+      + '<p class="cc-h">' + esc(this.properties.title || 'Crew Clock') + '</p>'
+      + '<div class="cc-card"><div style="font-size:22px;font-weight:700;">Who is the crew chief on this device?</div>'
+      + '<div class="cc-warn">Asked once. You can change it at the bottom of the screen.</div></div>';
+    for (const n of this.chiefList()) {
+      h += '<button class="cc-btn" data-act="setchief" data-name="' + esc(n) + '">' + esc(n) + '</button>';
+    }
+    this.domElement.innerHTML = h + '</div>';
+    this.wire();
+  }
+
+  // Distance and assigned crew, whichever we have. The crew name matters when the
+  // office schedules two crews on one job as two FS rows: without it the picker
+  // draws two buttons with identical labels and no way to tell them apart.
+  private subLabel(j: IJob): string {
+    const bits: string[] = [];
+    if (j.distMi != null) bits.push(fmtMi(j.distMi) + ' away');
+    if (j.crew && j.crew.length) bits.push(j.crew.join(', '));
+    return bits.length ? '<span class="cc-sub">' + esc(bits.join(' · ')) + '</span>' : '';
   }
 
   private renderSession(): string {
@@ -581,7 +662,11 @@ export default class DlsCrewClockWebPart extends BaseClientSideWebPart<IDlsCrewC
 
     // Same day, but they're at the office or well away from the job: offer to end.
     const off = this.milesFromOffice();
-    const job = this.jobsToday.filter(j => j.wipId === s.wipId)[0];
+    // Match on the FS row. Falls back to wipId for sessions written by 1.0.0.5,
+    // which have no fsId — without the fallback their banner would never appear.
+    const job = s.fsId
+      ? this.jobsToday.filter(j => j.fsId === s.fsId)[0]
+      : this.jobsToday.filter(j => j.wipId === s.wipId)[0];
     const awayFromJob = job && job.distMi != null && job.distMi > AWAY_FROM_JOB_MI;
     const atOffice = off != null && off <= NEAR_MI;
     let banner = '';
@@ -626,8 +711,8 @@ export default class DlsCrewClockWebPart extends BaseClientSideWebPart<IDlsCrewC
 
     if (clear && withDist.length) {
       const j = withDist[0];
-      h += '<button class="cc-btn" data-act="start" data-id="' + j.wipId + '"' + (this.busy ? ' disabled' : '') + '>'
-        + 'START — ' + esc(j.label) + '<span class="cc-sub">' + fmtMi(j.distMi as number) + ' away</span></button>';
+      h += '<button class="cc-btn" data-act="start" data-id="' + j.fsId + '"' + (this.busy ? ' disabled' : '') + '>'
+        + 'START — ' + esc(j.label) + this.subLabel(j) + '</button>';
       h += '<div class="cc-st">Not that one? <span class="cc-lnk" data-act="showall">Pick another job</span></div>';
       return h + this.renderCatchUp() + (this.showAllJobs ? this.renderAllJobs() : '');
     }
@@ -637,8 +722,8 @@ export default class DlsCrewClockWebPart extends BaseClientSideWebPart<IDlsCrewC
     if (stacked.length) {
       h += '<p class="cc-h">Which job?</p>';
       for (const j of stacked) {
-        h += '<button class="cc-btn sm" data-act="start" data-id="' + j.wipId + '"' + (this.busy ? ' disabled' : '') + '>'
-          + 'START — ' + esc(j.label) + '<span class="cc-sub">' + fmtMi(j.distMi as number) + ' away</span></button>';
+        h += '<button class="cc-btn sm" data-act="start" data-id="' + j.fsId + '"' + (this.busy ? ' disabled' : '') + '>'
+          + 'START — ' + esc(j.label) + this.subLabel(j) + '</button>';
       }
     }
 
@@ -652,9 +737,8 @@ export default class DlsCrewClockWebPart extends BaseClientSideWebPart<IDlsCrewC
       if (this.geoError) h += '<div class="cc-warn">' + esc(this.geoError) + '</div>';
       h += '<p class="cc-h">Today\'s schedule</p>';
       for (const j of rest) {
-        h += '<button class="cc-btn sm cc-alt" data-act="start" data-id="' + j.wipId + '"' + (this.busy ? ' disabled' : '') + '>'
-          + esc(j.label)
-          + (j.distMi != null ? '<span class="cc-sub">' + fmtMi(j.distMi as number) + ' away</span>' : '')
+        h += '<button class="cc-btn sm cc-alt" data-act="start" data-id="' + j.fsId + '"' + (this.busy ? ' disabled' : '') + '>'
+          + esc(j.label) + this.subLabel(j)
           + '</button>';
       }
     }
@@ -682,12 +766,30 @@ export default class DlsCrewClockWebPart extends BaseClientSideWebPart<IDlsCrewC
   // Covers the no-signal case where nothing got tapped. Three taps, exception only.
   private renderCatchUp(): string {
     if (this.session) return '';
-    return '<div class="cc-st" style="margin-top:18px;">'
-      + '<span class="cc-lnk" data-act="catchup">Forgot to clock a job? Enter it here</span></div>'
-      + (this._catchUpFor ? this.renderCatchUpCard() : '');
+    let h = '<div class="cc-st" style="margin-top:18px;">'
+      + '<span class="cc-lnk" data-act="catchup">Forgot to clock a job? Enter it here</span></div>';
+    if (this._catchUpPick) h += this.renderCatchUpPick();
+    else if (this._catchUpFor) h += this.renderCatchUpCard();
+    if (this.chief) {
+      h += '<div class="cc-st" style="margin-top:10px;opacity:.7;">Chief: ' + esc(this.chief)
+        + ' — <span class="cc-lnk" data-act="clearchief">not you?</span></div>';
+    }
+    return h;
   }
 
   private _catchUpFor: IJob | null = null;
+  private _catchUpPick: boolean = false;
+
+  // With two crews out, today's schedule has several jobs and the chief has to say
+  // which one they missed. Before 1.0.0.6 this card was hardcoded to jobsToday[0].
+  private renderCatchUpPick(): string {
+    let h = '<div class="cc-card"><div style="font-size:18px;font-weight:700;margin-bottom:6px;">Which job did you miss?</div>';
+    for (const j of this.jobsToday) {
+      h += '<button class="cc-btn sm cc-alt" data-act="cu-pick" data-id="' + j.fsId + '">'
+        + esc(j.label) + this.subLabel(j) + '</button>';
+    }
+    return h + '<div class="cc-st"><span class="cc-lnk" data-act="cu-cancel">Cancel</span></div></div>';
+  }
 
   private renderCatchUpCard(): string {
     const j = this._catchUpFor as IJob;
@@ -714,19 +816,38 @@ export default class DlsCrewClockWebPart extends BaseClientSideWebPart<IDlsCrewC
         const id = parseInt(t.getAttribute('data-id') || '0', 10);
 
         if (act === 'start') {
-          const j = this.jobsToday.filter(x => x.wipId === id)[0];
+          const j = this.jobsToday.filter(x => x.fsId === id)[0];
           if (j) this.start(j);
         } else if (act === 'startwip') {
           const w = this.wipAll.filter((x: any) => x.Id === id)[0];
-          if (w) this.start({ wipId: w.Id, label: w[WIP.label] || ('WIP ' + w.Id), lat: null, lng: null, precise: false, crew: [], distMi: null });
+          // No FS row on this path, so no scheduled crew exists. The device chief is
+          // the only truth available — write it as a one-name CrewOnSite rather than
+          // leaving the row with no crew attribution at all. The CrewChief Choice and
+          // CrewOnSite MultiChoice rosters share names, so the value is valid.
+          if (w) this.start({
+            fsId: 0, wipId: w.Id, label: w[WIP.label] || ('WIP ' + w.Id),
+            lat: null, lng: null, precise: false,
+            crew: this.chief ? [this.chief] : [], distMi: null
+          });
         } else if (act === 'showall') {
           this.showAllJobs = !this.showAllJobs; this.render();
-        } else if (act === 'catchup') {
-          this._catchUpFor = this.jobsToday[0] || null;
-          if (!this._catchUpFor) { this.showAllJobs = true; this.status = 'Pick the job from the full list first.'; }
+        } else if (act === 'setchief') {
+          this.chief = t.getAttribute('data-name') || '';
+          lsSet(LS_CHIEF, this.chief);
           this.render();
+        } else if (act === 'clearchief') {
+          this.chief = ''; lsDel(LS_CHIEF); this.render();
+        } else if (act === 'catchup') {
+          this._catchUpPick = false;
+          if (this.jobsToday.length === 1) { this._catchUpFor = this.jobsToday[0]; }
+          else if (this.jobsToday.length > 1) { this._catchUpFor = null; this._catchUpPick = true; }
+          else { this._catchUpFor = null; this.showAllJobs = true; this.status = 'Pick the job from the full list first.'; }
+          this.render();
+        } else if (act === 'cu-pick') {
+          this._catchUpFor = this.jobsToday.filter(x => x.fsId === id)[0] || null;
+          this._catchUpPick = false; this.render();
         } else if (act === 'cu-cancel') {
-          this._catchUpFor = null; this.render();
+          this._catchUpFor = null; this._catchUpPick = false; this.render();
         }
       });
     }
@@ -793,7 +914,8 @@ export default class DlsCrewClockWebPart extends BaseClientSideWebPart<IDlsCrewC
             PropertyPaneTextField('title', { label: 'Title' }),
             PropertyPaneTextField('timeLogListGuid', { label: 'Crew Time Log list GUID' }),
             PropertyPaneTextField('fieldScheduleListTitle', { label: 'Field Schedule list title' }),
-            PropertyPaneTextField('wipListGuid', { label: 'WIP Tracking list GUID' })
+            PropertyPaneTextField('wipListGuid', { label: 'WIP Tracking list GUID' }),
+            PropertyPaneTextField('crewChiefs', { label: 'Crew chief names (comma-separated)' })
           ]
         }]
       }]
