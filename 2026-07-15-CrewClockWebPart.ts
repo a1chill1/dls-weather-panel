@@ -23,7 +23,7 @@
 // the Deed Map bundle (shared-bundle edits have silently overwritten work here).
 // ============================================================================
 import { Version } from '@microsoft/sp-core-library';
-import { type IPropertyPaneConfiguration, PropertyPaneTextField } from '@microsoft/sp-property-pane';
+import { type IPropertyPaneConfiguration, PropertyPaneTextField, PropertyPaneToggle } from '@microsoft/sp-property-pane';
 import { BaseClientSideWebPart } from '@microsoft/sp-webpart-base';
 import { SPHttpClient } from '@microsoft/sp-http';
 
@@ -54,6 +54,20 @@ const FS = {
   date:         'Target_x0020_Field_x0020_Date',    // DateTime — display "Target Field Date"
   crew:         'CrewAssignment',                   // MultiChoice
   projectId:    'ProjectId'                         // 'Project' Lookup -> WIP (field id c6ce9502-...)
+};
+
+// Crew Status — the office board's scratch list (v1.0.0.8). ONE ROW PER ACTIVE
+// SESSION: created at START, deleted at DONE, by the app only. It is NOT a system
+// of record — Crew Time Log remains the only source of truth for hours, and every
+// call to this list is fire-and-forget precisely so a failure here can never cost
+// a crew their time. Created live 2026-07-20; internal names verified on creation
+// (no _x0020_ — the display names were chosen without spaces, as on Crew Time Log).
+const CS = {
+  projectId:  'ProjectId',   // 'Project' Lookup -> WIP, ShowField MapLabel
+  fsRowId:    'FsRowId',     // Number — which Field Schedule row (v1.0.0.6 fsId keying)
+  crewChief:  'CrewChief',   // Choice
+  crewOnSite: 'CrewOnSite',  // MultiChoice
+  startTime:  'StartTime'    // DateTime
 };
 
 // WIP Tracking — verified live 2026-07-15.
@@ -209,6 +223,24 @@ interface ISession {
   chief: string;         // snapshot at START — see startedBy()
   startIso: string;
   distMi: number | null;
+  // Crew Status row id, so the delete at DONE is precise. 0 = no row: either the
+  // feature is off, the START write failed (offline — the common case), or the
+  // session predates 1.0.0.8. All three mean "nothing to delete", which is why
+  // the offline path needs no special handling.
+  statusId: number;
+}
+
+// One line on the office board. Spined on the FIELD SCHEDULE, not on the status
+// rows — a crew who never opened the app has no status row and no time log row,
+// and showing exactly that case ("NOT STARTED") is the whole point of the board.
+interface IBoardRow {
+  fsId: number;
+  label: string;
+  crew: string[];        // scheduled crew, from the FS row
+  chief: string;         // who actually tapped, when we know
+  state: string;         // 'onsite' | 'done' | 'notstarted' | 'stale'
+  start: Date | null;
+  end: Date | null;
 }
 
 interface IPending {
@@ -227,6 +259,16 @@ export interface IDlsCrewClockWebPartProps {
   // device. Property rather than a constant so the roster tracks the column
   // without a rebuild. Live value 2026-07-20: "Cody, Desmond".
   crewChiefs: string;
+  // Empty = the Crew Status feature is OFF and the app behaves exactly as 1.0.0.7.
+  // Same graceful-degrade guard as crewChiefs: a misconfigured property must never
+  // be able to break the clock.
+  crewStatusListGuid: string;
+  // TRUE on the office homepage instance only. Renders the read-only board instead
+  // of the clock — no geolocation prompt, no chief gate, no buttons. Deliberately a
+  // property on the SAME web part rather than a second SPFx component: the build
+  // workflow pins exactly one component id by regex, so a second component would
+  // mean real build surgery for no user-visible gain.
+  boardMode: boolean;
 }
 
 // ============================================================================
@@ -245,9 +287,29 @@ export default class DlsCrewClockWebPart extends BaseClientSideWebPart<IDlsCrewC
   private tick: any = null;
   private watchId: any = null;
 
+  // ---- board mode only ----
+  private board: IBoardRow[] = [];
+  private boardAt: Date | null = null;   // last successful refresh, shown in the footer
+  private boardErr: string = '';
+  private showDone: boolean = false;     // completed jobs collapse to a footer count
+
   // ---- lifecycle ----------------------------------------------------------
 
   protected onInit(): Promise<void> {
+    // BOARD MODE: returns before startGeo(), before any localStorage read, and
+    // before the chief gate. The office PC must never be prompted for location —
+    // it is not a crew device and a permission bar on the homepage everyone lands
+    // on would be a bug, not a feature. The board also writes NOTHING to
+    // localStorage: the homepage shares an origin with Crew-Clock.aspx, so board
+    // writes would land on the crews' own cache keys if this page were ever opened
+    // on an iPad.
+    if (this.properties.boardMode) {
+      document.addEventListener('visibilitychange', this.onVisibility);
+      this.tick = setInterval(() => this.refreshBoard(), 60000);
+      this.refreshBoard();
+      return Promise.resolve();
+    }
+
     this.session = lsGet(LS_SESSION);
     this.chief = lsGet(LS_CHIEF) || '';
     this.jobsToday = lsGet(LS_FS) || [];
@@ -282,7 +344,10 @@ export default class DlsCrewClockWebPart extends BaseClientSideWebPart<IDlsCrewC
 
   // refresh() also flushes the offline queue, so a foregrounded page both
   // refetches today's schedule and sends anything saved while out of signal.
-  private onVisibility = (): void => { if (document.visibilityState === 'visible') this.refresh(); };
+  private onVisibility = (): void => {
+    if (document.visibilityState !== 'visible') return;
+    if (this.properties.boardMode) this.refreshBoard(); else this.refresh();
+  };
 
   protected get dataVersion(): Version { return Version.parse('1.0'); }
 
@@ -295,6 +360,8 @@ export default class DlsCrewClockWebPart extends BaseClientSideWebPart<IDlsCrewC
   private fsApi(): string {
     return this.web() + "/_api/web/lists/getbytitle('" + (this.properties.fieldScheduleListTitle || 'Field Schedule').replace(/'/g, "''") + "')";
   }
+
+  private crewStatusApi(): string { return this.web() + "/_api/web/lists(guid'" + this.properties.crewStatusListGuid + "')"; }
 
   private spGet(url: string): Promise<any> {
     return this.context.spHttpClient
@@ -428,6 +495,56 @@ export default class DlsCrewClockWebPart extends BaseClientSideWebPart<IDlsCrewC
     return ['' + v];
   }
 
+  // ---- crew status (the office board's scratch row) -----------------------
+  //
+  // THE HARD RULE FOR THIS WHOLE SECTION: none of it may block, slow, or break the
+  // Crew Time Log write. Every call is fire-and-forget — never awaited, failures
+  // swallowed, nothing queued, nothing shown to the crew. If the board write fails
+  // the crew never knows and their hours are unaffected. A monitoring convenience
+  // must never put real hours at risk, so when the two are in tension this side
+  // always loses.
+
+  // Fired from start(). The returned Id is stashed on the session so the delete at
+  // DONE is precise rather than a search.
+  private statusOpen(s: ISession): void {
+    if (!this.properties.crewStatusListGuid) return;
+    try {
+      const body: any = {};
+      body[CS.projectId] = s.wipId;
+      body[CS.fsRowId]   = s.fsId;
+      body[CS.startTime] = s.startIso;
+      if (s.chief) body[CS.crewChief] = s.chief;
+      // Plain array, not {results:[...]} — same nometadata rule as Crew Time Log.
+      if (s.crew && s.crew.length) body[CS.crewOnSite] = s.crew;
+
+      this.spPost(this.crewStatusApi() + '/items', body).then((r: any) => {
+        if (r.status < 200 || r.status >= 300) return;
+        return r.json().then((j: any) => {
+          const id = j && j.Id; if (!id) return;
+          // The session can end while this POST is still in flight — a fast DONE, or
+          // a wrong-job back-out. Writing statusId onto a session that no longer
+          // exists would strand the row on the board as a phantom crew, so if the
+          // session moved on, delete the row we just made instead.
+          const cur = this.session;
+          if (cur && cur.startIso === s.startIso && cur.fsId === s.fsId && cur.wipId === s.wipId) {
+            cur.statusId = id;
+            lsSet(LS_SESSION, cur);
+          } else {
+            this.statusClose(id);
+          }
+        });
+      }).catch(() => { /* board is best-effort — never surfaced */ });
+    } catch (e) { /* never let this reach the caller */ }
+  }
+
+  private statusClose(id: number): void {
+    if (!this.properties.crewStatusListGuid || !id) return;
+    try {
+      this.spPost(this.crewStatusApi() + '/items(' + id + ')', null,
+        { 'X-HTTP-Method': 'DELETE', 'IF-MATCH': '*' }).catch(() => { /* stale row degrades to a visible warning */ });
+    } catch (e) { /* never let this reach the caller */ }
+  }
+
   // ---- the write ----------------------------------------------------------
 
   // CrewChief = who actually tapped (device truth). CrewOnSite = what the schedule
@@ -514,7 +631,18 @@ export default class DlsCrewClockWebPart extends BaseClientSideWebPart<IDlsCrewC
     step(0);
   }
 
-  private clearSession(): void { this.session = null; lsDel(LS_SESSION); }
+  // The one place a session ends, so the one place the board row is removed. FOUR
+  // paths land here — DONE, the end-now/stale close-out, the wrong-job discard, and
+  // queue() when the POST failed and the row was saved offline. The spec listed only
+  // the first three; the queue path ends the session too, and skipping it would leave
+  // the board showing a crew who finished hours ago (as a "stale" warning the next
+  // day). Deleting here covers all four by construction.
+  private clearSession(): void {
+    const s = this.session;
+    this.session = null;
+    lsDel(LS_SESSION);
+    if (s && s.statusId) this.statusClose(s.statusId);
+  }
 
   // ---- actions ------------------------------------------------------------
 
@@ -523,11 +651,15 @@ export default class DlsCrewClockWebPart extends BaseClientSideWebPart<IDlsCrewC
       fsId: job.fsId, wipId: job.wipId, label: job.label, crew: job.crew,
       chief: this.chief,
       startIso: roundHalfHour(new Date()).toISOString(),
-      distMi: job.distMi
+      distMi: job.distMi,
+      statusId: 0
     };
     lsSet(LS_SESSION, this.session);
     this.status = '';
     this.render();
+    // AFTER the session is saved locally and painted. Ordering is deliberate: the
+    // crew's clock is running and durable before we even try to tell the office.
+    this.statusOpen(this.session);
   }
 
   private done(fieldComplete: boolean): void {
@@ -595,6 +727,8 @@ export default class DlsCrewClockWebPart extends BaseClientSideWebPart<IDlsCrewC
   // let a subclass narrow its visibility. SPFx calls this itself after onInit resolves.
   public render(): void {
     if (!this.domElement) return;    // an async refresh/tick can land before the first render
+    // Board first: it must bypass the chief gate as well as the clock UI.
+    if (this.properties.boardMode) { this.renderBoard(); return; }
     if (this._confirming) return;    // never repaint over the wrong-job confirm mid-decision
 
     // One-time identity gate. Guarded on the roster being configured so a blank
@@ -805,6 +939,230 @@ export default class DlsCrewClockWebPart extends BaseClientSideWebPart<IDlsCrewC
       + '</div>';
   }
 
+  // ==========================================================================
+  // BOARD MODE — read-only office view. No writes of any kind: the office cannot
+  // start or stop a crew's clock from here, because that would create rows nobody
+  // actually tapped for.
+  // ==========================================================================
+
+  private refreshBoard(): void {
+    const today = new Date();
+    const r = isoLocalDayRange(today);
+
+    const fsUrl = this.fsApi() + '/items?$top=200'
+      + '&$select=Id,' + FS.projectId + ',' + FS.crew + ',' + FS.date
+      + "&$filter=" + FS.date + " ge datetime'" + r.start + "' and " + FS.date + " le datetime'" + r.end + "'";
+
+    const tlUrl = this.timeLogApi() + '/items?$top=500'
+      + '&$select=Id,' + F.projectId + ',' + F.crewChief + ',' + F.startTime + ',' + F.endTime
+      + "&$filter=" + F.startTime + " ge datetime'" + r.start + "' and " + F.startTime + " le datetime'" + r.end + "'";
+
+    const csUrl = this.crewStatusApi() + '/items?$top=200'
+      + '&$select=Id,' + CS.projectId + ',' + CS.fsRowId + ',' + CS.crewChief + ',' + CS.crewOnSite + ',' + CS.startTime;
+
+    const wipUrl = this.wipApi() + '/items?$top=5000&$select=Id,' + WIP.label;
+
+    // WIP is fetched once and kept in memory. Job labels don't change during a day,
+    // and re-pulling 5000 rows every 60 seconds on an always-open office tab is a
+    // cost with no benefit. The schedule and the status rows DO change, so those
+    // are refetched every cycle.
+    const calls = [
+      this.spGet(fsUrl),
+      this.spGet(tlUrl),
+      this.properties.crewStatusListGuid ? this.spGet(csUrl) : Promise.resolve({ value: [] }),
+      this.wipAll.length ? Promise.resolve({ value: this.wipAll }) : this.spGet(wipUrl)
+    ];
+
+    Promise.all(calls).then((res: any[]) => {
+      const fsRows = (res[0] && res[0].value) || [];
+      const tlRows = (res[1] && res[1].value) || [];
+      const csRows = (res[2] && res[2].value) || [];
+      const wipRows = (res[3] && res[3].value) || [];
+      this.wipAll = wipRows;
+
+      const label: any = {};
+      for (const w of wipRows) label[w.Id] = w[WIP.label] || ('WIP ' + w.Id);
+
+      // Status rows keyed by FS row. Rows written by the "job not on today's list"
+      // path carry fsId 0 — they have no schedule row to attach to, so they are
+      // appended as extra ON SITE lines further down rather than dropped.
+      const byFs: any = {};
+      const unscheduled: any[] = [];
+      for (const c of csRows) {
+        const k = c[CS.fsRowId];
+        if (k) byFs[k] = c; else unscheduled.push(c);
+      }
+
+      // Time Log rows have no FsRowId, so they can only be matched by project. When
+      // the office puts two crews on one job as two FS rows and only one crew has
+      // finished, matching by project alone would mark BOTH rows done. Each time log
+      // row is therefore consumed at most once: one FS row goes DONE, the other stays
+      // NOT STARTED — which is the honest reading of what's known.
+      const tlByProject: any = {};
+      for (const t of tlRows) {
+        const p = t[F.projectId];
+        if (p == null) continue;
+        if (!tlByProject[p]) tlByProject[p] = [];
+        tlByProject[p].push(t);
+      }
+
+      const rows: IBoardRow[] = [];
+      for (const fs of fsRows) {
+        const pid = fs[FS.projectId];
+        if (pid == null) continue;
+        const st = byFs[fs.Id];
+        const base = {
+          fsId: fs.Id,
+          label: label[pid] || ('WIP ' + pid),
+          crew: this.asArray(fs[FS.crew])
+        };
+        if (st) {
+          const started = new Date(st[CS.startTime]);
+          // A status row from a previous day means the app never got to delete it —
+          // a dead battery, a closed tab, a failed DELETE. Showing that as "on site"
+          // would be a phantom crew, so it degrades to a visible warning instead.
+          rows.push({
+            fsId: base.fsId, label: base.label, crew: base.crew,
+            chief: st[CS.crewChief] || '',
+            state: sameLocalDay(started, today) ? 'onsite' : 'stale',
+            start: started, end: null
+          });
+          continue;
+        }
+        const pool = tlByProject[pid];
+        if (pool && pool.length) {
+          const t = pool.shift();
+          rows.push({
+            fsId: base.fsId, label: base.label, crew: base.crew,
+            chief: t[F.crewChief] || '',
+            state: 'done',
+            start: new Date(t[F.startTime]), end: new Date(t[F.endTime])
+          });
+          continue;
+        }
+        rows.push({
+          fsId: base.fsId, label: base.label, crew: base.crew,
+          chief: '', state: 'notstarted', start: null, end: null
+        });
+      }
+
+      // Unscheduled work: live only, never "not started" — there is no schedule row
+      // saying it was expected, so its absence means nothing.
+      for (const c of unscheduled) {
+        const pid = c[CS.projectId];
+        const started = new Date(c[CS.startTime]);
+        rows.push({
+          fsId: 0,
+          label: (label[pid] || ('WIP ' + pid)) + ' (not on schedule)',
+          crew: this.asArray(c[CS.crewOnSite]),
+          chief: c[CS.crewChief] || '',
+          state: sameLocalDay(started, today) ? 'onsite' : 'stale',
+          start: started, end: null
+        });
+      }
+
+      this.board = rows;
+      this.boardAt = new Date();
+      this.boardErr = '';
+      this.render();
+    }).catch(() => {
+      this.boardErr = 'Cannot reach SharePoint — showing the last update.';
+      this.render();
+    });
+  }
+
+  private boardCss(): string {
+    return '<style>' +
+      '.cb{font-family:"Segoe UI",system-ui,sans-serif;background:#1b1b1f;color:#f5f5f5;' +
+        'border-radius:14px;padding:16px 18px;}' +
+      '.cb-h{font-size:15px;color:#b9b9c0;margin:0 0 14px;display:flex;justify-content:space-between;' +
+        'flex-wrap:wrap;gap:6px;}' +
+      '.cb-r{display:flex;align-items:baseline;gap:14px;padding:11px 0;border-top:1px solid #303036;}' +
+      '.cb-r:first-of-type{border-top:0;}' +
+      '.cb-tag{flex:0 0 132px;font-size:14px;font-weight:700;letter-spacing:.04em;}' +
+      '.cb-job{font-size:23px;font-weight:700;line-height:1.2;}' +
+      '.cb-sub{font-size:15px;color:#b9b9c0;margin-top:3px;}' +
+      '.cb-on .cb-tag{color:#4ade80;}' +
+      '.cb-not .cb-tag{color:#fb923c;}' +
+      '.cb-stale .cb-tag{color:#fbbf24;}' +
+      '.cb-done{opacity:.62;}.cb-done .cb-tag{color:#b9b9c0;}' +
+      '.cb-foot{margin-top:14px;padding-top:12px;border-top:1px solid #303036;font-size:14px;color:#b9b9c0;}' +
+      '.cb-lnk{color:#fb923c;cursor:pointer;text-decoration:underline;}' +
+      '.cb-ok{font-size:17px;color:#b9b9c0;padding:8px 0;}' +
+      '</style>';
+  }
+
+  private boardLine(r: IBoardRow): string {
+    const now = new Date();
+    let tag = '', cls = '', sub = '';
+    const who = r.chief || (r.crew.length ? r.crew.join(', ') : '');
+
+    if (r.state === 'onsite') {
+      tag = '&#128994; ON SITE'; cls = 'cb-on';
+      const st = r.start as Date;
+      sub = [who, 'since ' + fmtTime(st), fmtElapsed(now.getTime() - st.getTime())]
+        .filter(x => !!x).join(' · ');
+    } else if (r.state === 'stale') {
+      tag = '&#9888; CHECK'; cls = 'cb-stale';
+      const st = r.start as Date;
+      sub = [who, 'clocked in ' + dayName(st) + ' ' + fmtTime(st) + ' and never finished']
+        .filter(x => !!x).join(' · ');
+    } else if (r.state === 'done') {
+      tag = '&#9898; DONE'; cls = 'cb-done';
+      const st = r.start as Date, en = r.end as Date;
+      sub = [who, fmtTime(st) + '–' + fmtTime(en),
+        (Math.round(hoursBetween(st, en) * 100) / 100) + ' h'].filter(x => !!x).join(' · ');
+    } else {
+      tag = '&#128992; NOT STARTED'; cls = 'cb-not';
+      sub = who || 'no crew assigned';
+    }
+
+    return '<div class="cb-r ' + cls + '">'
+      + '<div class="cb-tag">' + tag + '</div>'
+      + '<div><div class="cb-job">' + esc(r.label) + '</div>'
+      + '<div class="cb-sub">' + esc(sub) + '</div></div></div>';
+  }
+
+  private renderBoard(): void {
+    const now = new Date();
+    const live = this.board.filter(r => r.state !== 'done');
+    const done = this.board.filter(r => r.state === 'done');
+
+    let h = this.boardCss() + '<div class="cb">'
+      + '<p class="cb-h"><span>' + esc(this.properties.title || 'Crew Status')
+      + ' — ' + dayName(now) + ' ' + (now.getMonth() + 1) + '/' + now.getDate() + '</span>'
+      + '<span>' + (this.boardAt ? 'updated ' + fmtTime(this.boardAt) : 'loading…') + '</span></p>';
+
+    if (this.boardErr) h += '<div class="cb-sub" style="color:#fbbf24;">' + esc(this.boardErr) + '</div>';
+
+    if (!this.board.length) {
+      h += '<div class="cb-ok">Nothing on today\'s schedule.</div>';
+    } else if (!live.length) {
+      // Every scheduled job is finished — say so rather than showing an empty box.
+      h += '<div class="cb-ok">&#9989; All ' + done.length + ' scheduled '
+        + (done.length === 1 ? 'job is' : 'jobs are') + ' finished.</div>';
+    } else {
+      // ON SITE and CHECK first, then the ones needing attention.
+      const order: any = { onsite: 0, stale: 1, notstarted: 2 };
+      live.sort((a, b) => order[a.state] - order[b.state]);
+      for (const r of live) h += this.boardLine(r);
+    }
+
+    // Completed jobs collapse to a count. Deliberately not dropped: the number is
+    // the office's "everything's covered" reassurance, but showing the rows in full
+    // would crowd out the two states that actually need attention.
+    if (done.length) {
+      h += '<div class="cb-foot">' + done.length + ' finished today · '
+        + '<span class="cb-lnk" data-act="toggledone">' + (this.showDone ? 'hide' : 'show') + '</span></div>';
+      if (this.showDone) for (const r of done) h += this.boardLine(r);
+    }
+
+    this.domElement.innerHTML = h + '</div>';
+
+    const t = this.domElement.querySelector('[data-act="toggledone"]');
+    if (t) t.addEventListener('click', () => { this.showDone = !this.showDone; this.render(); });
+  }
+
   // Delegated listeners — module scope means inline onclick can't see our methods
   // (same constraint the Deed Map web part hit).
   private wire(): void {
@@ -928,7 +1286,12 @@ export default class DlsCrewClockWebPart extends BaseClientSideWebPart<IDlsCrewC
             PropertyPaneTextField('timeLogListGuid', { label: 'Crew Time Log list GUID' }),
             PropertyPaneTextField('fieldScheduleListTitle', { label: 'Field Schedule list title' }),
             PropertyPaneTextField('wipListGuid', { label: 'WIP Tracking list GUID' }),
-            PropertyPaneTextField('crewChiefs', { label: 'Crew chief names (comma-separated)' })
+            PropertyPaneTextField('crewChiefs', { label: 'Crew chief names (comma-separated)' }),
+            PropertyPaneTextField('crewStatusListGuid', { label: 'Crew Status list GUID (blank = off)' }),
+            PropertyPaneToggle('boardMode', {
+              label: 'Office board (read-only, no clock)',
+              onText: 'Board', offText: 'Clock'
+            })
           ]
         }]
       }]
