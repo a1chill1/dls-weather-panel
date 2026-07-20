@@ -610,15 +610,27 @@ export default class DlsCrewClockWebPart extends BaseClientSideWebPart<IDlsCrewC
     this.clearSession();
   }
 
+  // DOUBLE-SEND GUARD (v1.0.0.9). Found live by the v1.0.0.8 offline test: ONE queued
+  // entry wrote TWO Crew Time Log rows, which Flow 12 then counted as double hours.
+  // Cause: 'online' fires -> onOnline() calls flushQueue() AND refresh(), and refresh()
+  // calls flushQueue() again. The trimmed queue is only written back to localStorage
+  // after every POST resolves, so both invocations read the same pending entry and both
+  // sent it. Present since v1.0.0.5 — the exact path a crew takes driving out of a
+  // no-signal site back into coverage.
+  private flushing: boolean = false;
+
   private flushQueue(): void {
     const q: IPending[] = lsGet(LS_QUEUE) || [];
     if (!q.length || !navigator.onLine) return;
+    if (this.flushing) return;   // a flush is already draining this exact queue
+    this.flushing = true;
 
     const keep: IPending[] = [];
     let done = 0;
     const step = (i: number): void => {
       if (i >= q.length) {
         lsSet(LS_QUEUE, keep);
+        this.flushing = false;   // released only after the queue is written back
         if (done) { this.status = 'Sent ' + done + ' saved ' + (done === 1 ? 'entry' : 'entries') + '.'; }
         this.render();
         return;
