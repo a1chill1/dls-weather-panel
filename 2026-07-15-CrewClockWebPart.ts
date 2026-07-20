@@ -260,9 +260,9 @@ export default class DlsCrewClockWebPart extends BaseClientSideWebPart<IDlsCrewC
     document.addEventListener('visibilitychange', this.onVisibility);
     this.startGeo();
 
-    // Live elapsed clock on the active-session view. Skipped while the DONE
-    // confirm is up — found live 2026-07-15: the tick re-render wiped the
-    // confirm dialog out from under the user mid-decision.
+    // Live elapsed clock on the active-session view. Skipped while the wrong-job
+    // confirm is up — found live 2026-07-15 (on the since-removed DONE confirm):
+    // the tick re-render wiped the confirm dialog out from under the user.
     this.tick = setInterval(() => { if (this.session && !this._confirming) this.render(); }, 30000);
 
     // No render() here — SPFx calls render() itself once onInit resolves, and
@@ -595,7 +595,7 @@ export default class DlsCrewClockWebPart extends BaseClientSideWebPart<IDlsCrewC
   // let a subclass narrow its visibility. SPFx calls this itself after onInit resolves.
   public render(): void {
     if (!this.domElement) return;    // an async refresh/tick can land before the first render
-    if (this._confirming) return;    // never repaint over the DONE-confirm mid-decision
+    if (this._confirming) return;    // never repaint over the wrong-job confirm mid-decision
 
     // One-time identity gate. Guarded on the roster being configured so a blank
     // crewChiefs property degrades to pre-1.0.0.6 behaviour rather than locking a
@@ -682,7 +682,9 @@ export default class DlsCrewClockWebPart extends BaseClientSideWebPart<IDlsCrewC
       + '<div style="color:#b9b9c0;">Started ' + fmtTime(start) + '</div>'
       + '<div class="cc-el">' + fmtElapsed(now.getTime() - start.getTime()) + '</div>'
       + '</div>'
-      + '<button class="cc-btn cc-done" id="cc-done"' + (this.busy ? ' disabled' : '') + '>DONE</button>';
+      + '<button class="cc-btn cc-done" id="cc-done"' + (this.busy ? ' disabled' : '') + '>DONE</button>'
+      // Deliberately a small link, not a button — it must never compete with DONE.
+      + '<div class="cc-st" style="margin-top:14px;"><span class="cc-lnk" id="cc-wrongjob">Wrong job? Go back</span></div>';
   }
 
   private renderPicker(): string {
@@ -852,8 +854,16 @@ export default class DlsCrewClockWebPart extends BaseClientSideWebPart<IDlsCrewC
       });
     }
 
+    // One tap, row written, no confirm screen. Field Complete is ALWAYS false from
+    // the app (decision: Alex, 2026-07-20) — crews don't judge job-completeness; the
+    // office advances WIP to "Fielding Complete" itself, so Flow 12's status branch
+    // never fires from an app row. If more field work is needed, the surveyors
+    // schedule it for another day.
     const doneBtn = el.querySelector('#cc-done');
-    if (doneBtn) doneBtn.addEventListener('click', () => this.confirmDone());
+    if (doneBtn) doneBtn.addEventListener('click', () => this.done(false));
+
+    const wrongJob = el.querySelector('#cc-wrongjob');
+    if (wrongJob) wrongJob.addEventListener('click', () => this.confirmWrongJob());
 
     const endNow = el.querySelector('#cc-endnow');
     if (endNow) endNow.addEventListener('click', () => this.endAt(new Date(), false, 'CrewClockApp'));
@@ -889,19 +899,22 @@ export default class DlsCrewClockWebPart extends BaseClientSideWebPart<IDlsCrewC
 
   private _confirming: boolean = false;
 
-  // The crew's only decision.
-  private confirmDone(): void {
+  // Wrong-job back-out. Started the timer on the wrong job → this discards the
+  // session WITHOUT writing a row. It has its own confirm step so an accidental tap
+  // on the link is also recoverable — the safe path ("keep clocking") is the big
+  // primary button. _confirming keeps the 30-second tick from repainting over the
+  // card mid-decision (same live bug as the old DONE confirm, 2026-07-15).
+  private confirmWrongJob(): void {
     this._confirming = true;
     const s = this.session as ISession;
     this.domElement.innerHTML = this.css() + '<div class="cc">'
-      + '<div class="cc-card"><div style="font-size:22px;font-weight:700;">All field work finished on ' + esc(s.label) + '?</div></div>'
-      + '<button class="cc-btn cc-alt" id="cc-back">Done for today — coming back</button>'
-      + '<button class="cc-btn cc-done" id="cc-complete">Job complete</button>'
-      + '<div class="cc-st"><span class="cc-lnk" id="cc-cancel">Cancel</span></div>'
+      + '<div class="cc-card"><div style="font-size:22px;font-weight:700;">Leave ' + esc(s.label) + ' without saving?</div>'
+      + '<div class="cc-warn">The timer stops and nothing is written.</div></div>'
+      + '<button class="cc-btn cc-done" id="cc-keep">No — keep clocking</button>'
+      + '<button class="cc-btn cc-alt" id="cc-discard">Yes — pick a different job</button>'
       + '</div>';
-    (this.domElement.querySelector('#cc-back') as HTMLElement).addEventListener('click', () => { this._confirming = false; this.done(false); });
-    (this.domElement.querySelector('#cc-complete') as HTMLElement).addEventListener('click', () => { this._confirming = false; this.done(true); });
-    (this.domElement.querySelector('#cc-cancel') as HTMLElement).addEventListener('click', () => { this._confirming = false; this.render(); });
+    (this.domElement.querySelector('#cc-keep') as HTMLElement).addEventListener('click', () => { this._confirming = false; this.render(); });
+    (this.domElement.querySelector('#cc-discard') as HTMLElement).addEventListener('click', () => { this._confirming = false; this.clearSession(); this.status = ''; this.render(); });
   }
 
   protected getPropertyPaneConfiguration(): IPropertyPaneConfiguration {
