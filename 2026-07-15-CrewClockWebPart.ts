@@ -1260,8 +1260,12 @@ export default class DlsCrewClockWebPart extends BaseClientSideWebPart<IDlsCrewC
       h += '<div class="cb-ok">Nothing on today\'s schedule.</div>';
     } else if (!live.length) {
       // Every scheduled job is finished — say so rather than showing an empty box.
-      h += '<div class="cb-ok">&#9989; All ' + done.length + ' scheduled '
-        + (done.length === 1 ? 'job is' : 'jobs are') + ' finished.</div>';
+      // Count only the SCHEDULED ones: off-schedule work also lands in `done` (v1.0.0.11)
+      // and counting it here would claim jobs on today's schedule that were never on it.
+      const scheduledDone = done.filter(r => r.fsId !== 0).length;
+      h += '<div class="cb-ok">&#9989; ' + (scheduledDone
+        ? 'All ' + scheduledDone + ' scheduled ' + (scheduledDone === 1 ? 'job is' : 'jobs are') + ' finished.'
+        : 'Nothing left on today\'s schedule.') + '</div>';
     } else {
       // ON SITE and CHECK first, then the ones needing attention.
       const order: any = { onsite: 0, stale: 1, notstarted: 2 };
