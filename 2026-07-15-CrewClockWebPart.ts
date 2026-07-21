@@ -165,6 +165,15 @@ function fmtMi(mi: number): string {
   return (mi < 10 ? mi.toFixed(1) : Math.round(mi).toString()) + ' mi';
 }
 
+// 1st, 2nd, 3rd, 4th... Only ever called with small trip counts, so the teens
+// exception that trips up naive versions is out of reach — handled anyway.
+function ordinal(n: number): string {
+  const t = n % 100;
+  if (t >= 11 && t <= 13) return n + 'th';
+  const s = ['th', 'st', 'nd', 'rd'][n % 10] || 'th';
+  return n + s;
+}
+
 function dayName(d: Date): string {
   return ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][d.getDay()];
 }
@@ -241,6 +250,18 @@ interface IBoardRow {
   state: string;         // 'onsite' | 'done' | 'notstarted' | 'stale'
   start: Date | null;
   end: Date | null;
+  // Every FINISHED session on this job today, oldest first (v1.0.0.10). A big job
+  // worked before AND after lunch is two Crew Time Log rows against one schedule
+  // row; the board used to consume one and silently drop the rest, so an afternoon
+  // return trip never showed. Empty for 'notstarted'; on 'onsite' it holds the
+  // EARLIER trips, which is what makes "2nd trip" knowable.
+  sessions: IBoardSession[];
+}
+
+interface IBoardSession {
+  start: Date;
+  end: Date;
+  chief: string;
 }
 
 interface IPending {
@@ -1010,6 +1031,7 @@ export default class DlsCrewClockWebPart extends BaseClientSideWebPart<IDlsCrewC
       // finished, matching by project alone would mark BOTH rows done. Each time log
       // row is therefore consumed at most once: one FS row goes DONE, the other stays
       // NOT STARTED — which is the honest reading of what's known.
+      // Oldest first, so a job's sessions read morning-then-afternoon.
       const tlByProject: any = {};
       for (const t of tlRows) {
         const p = t[F.projectId];
@@ -1017,6 +1039,28 @@ export default class DlsCrewClockWebPart extends BaseClientSideWebPart<IDlsCrewC
         if (!tlByProject[p]) tlByProject[p] = [];
         tlByProject[p].push(t);
       }
+      for (const k in tlByProject) {
+        tlByProject[k].sort((a: any, b: any) =>
+          new Date(a[F.startTime]).getTime() - new Date(b[F.startTime]).getTime());
+      }
+
+      // How many of today's schedule rows point at each project. One row is the
+      // normal case and means every time log row for that project belongs to it —
+      // including a second, post-lunch trip. Two or more rows is the two-crews-on-
+      // one-job case, where the one-row-per-FS-row rationing above still applies
+      // because there is no way to tell which crew logged which row.
+      const fsPerProject: any = {};
+      for (const fs of fsRows) {
+        const p = fs[FS.projectId];
+        if (p == null) continue;
+        fsPerProject[p] = (fsPerProject[p] || 0) + 1;
+      }
+
+      const toSession = (t: any): IBoardSession => ({
+        start: new Date(t[F.startTime]),
+        end: new Date(t[F.endTime]),
+        chief: t[F.crewChief] || ''
+      });
 
       const rows: IBoardRow[] = [];
       for (const fs of fsRows) {
@@ -1028,33 +1072,49 @@ export default class DlsCrewClockWebPart extends BaseClientSideWebPart<IDlsCrewC
           label: label[pid] || ('WIP ' + pid),
           crew: this.asArray(fs[FS.crew])
         };
+
+        // Finished sessions claimed by THIS schedule row. Sole FS row for the
+        // project: take them all. Shared project: take one, as before.
+        const pool = tlByProject[pid];
+        let sessions: IBoardSession[] = [];
+        if (pool && pool.length) {
+          if (fsPerProject[pid] === 1) {
+            sessions = pool.splice(0, pool.length).map(toSession);
+          } else {
+            sessions = [toSession(pool.shift())];
+          }
+        }
+
         if (st) {
           const started = new Date(st[CS.startTime]);
           // A status row from a previous day means the app never got to delete it —
           // a dead battery, a closed tab, a failed DELETE. Showing that as "on site"
           // would be a phantom crew, so it degrades to a visible warning instead.
+          // Any finished sessions ride along as the earlier trips: a crew back out
+          // after lunch is ON SITE, and the morning's hours are still worth seeing.
           rows.push({
             fsId: base.fsId, label: base.label, crew: base.crew,
             chief: st[CS.crewChief] || '',
             state: sameLocalDay(started, today) ? 'onsite' : 'stale',
-            start: started, end: null
+            start: started, end: null,
+            sessions: sessions
           });
           continue;
         }
-        const pool = tlByProject[pid];
-        if (pool && pool.length) {
-          const t = pool.shift();
+        if (sessions.length) {
           rows.push({
             fsId: base.fsId, label: base.label, crew: base.crew,
-            chief: t[F.crewChief] || '',
+            chief: sessions[0].chief,
             state: 'done',
-            start: new Date(t[F.startTime]), end: new Date(t[F.endTime])
+            start: sessions[0].start, end: sessions[sessions.length - 1].end,
+            sessions: sessions
           });
           continue;
         }
         rows.push({
           fsId: base.fsId, label: base.label, crew: base.crew,
-          chief: '', state: 'notstarted', start: null, end: null
+          chief: '', state: 'notstarted', start: null, end: null,
+          sessions: []
         });
       }
 
@@ -1063,13 +1123,17 @@ export default class DlsCrewClockWebPart extends BaseClientSideWebPart<IDlsCrewC
       for (const c of unscheduled) {
         const pid = c[CS.projectId];
         const started = new Date(c[CS.startTime]);
+        // Nothing consumed this project's time log rows (that only happens against
+        // a schedule row), so any that exist are this job's earlier trips.
+        const left = tlByProject[pid];
         rows.push({
           fsId: 0,
           label: (label[pid] || ('WIP ' + pid)) + ' (not on schedule)',
           crew: this.asArray(c[CS.crewOnSite]),
           chief: c[CS.crewChief] || '',
           state: sameLocalDay(started, today) ? 'onsite' : 'stale',
-          start: started, end: null
+          start: started, end: null,
+          sessions: left && left.length ? left.splice(0, left.length).map(toSession) : []
         });
       }
 
@@ -1108,12 +1172,24 @@ export default class DlsCrewClockWebPart extends BaseClientSideWebPart<IDlsCrewC
     const now = new Date();
     let tag = '', cls = '', sub = '';
     const who = r.chief || (r.crew.length ? r.crew.join(', ') : '');
+    const sess = r.sessions || [];
+    const sumHours = (list: IBoardSession[]) => {
+      let h = 0;
+      for (const s of list) h += hoursBetween(s.start, s.end);
+      return Math.round(h * 100) / 100;
+    };
 
     if (r.state === 'onsite') {
       tag = '&#128994; ON SITE'; cls = 'cb-on';
       const st = r.start as Date;
-      sub = [who, 'since ' + fmtTime(st), fmtElapsed(now.getTime() - st.getTime())]
-        .filter(x => !!x).join(' · ');
+      const parts = [who, 'since ' + fmtTime(st), fmtElapsed(now.getTime() - st.getTime())];
+      // A crew back out after lunch: say which trip this is and what the earlier
+      // ones came to, so the office isn't left thinking the job was double-logged.
+      if (sess.length) {
+        parts.push(ordinal(sess.length + 1) + ' trip ('
+          + sumHours(sess) + ' h earlier today)');
+      }
+      sub = parts.filter(x => !!x).join(' · ');
     } else if (r.state === 'stale') {
       tag = '&#9888; CHECK'; cls = 'cb-stale';
       const st = r.start as Date;
@@ -1121,9 +1197,15 @@ export default class DlsCrewClockWebPart extends BaseClientSideWebPart<IDlsCrewC
         .filter(x => !!x).join(' · ');
     } else if (r.state === 'done') {
       tag = '&#9898; DONE'; cls = 'cb-done';
-      const st = r.start as Date, en = r.end as Date;
-      sub = [who, fmtTime(st) + '–' + fmtTime(en),
-        (Math.round(hoursBetween(st, en) * 100) / 100) + ' h'].filter(x => !!x).join(' · ');
+      // One line per scheduled job even when the job was worked in two or more
+      // sittings — the ranges join with " + " and the hours are the day's total.
+      const chiefs: string[] = [];
+      for (const s of sess) if (s.chief && chiefs.indexOf(s.chief) < 0) chiefs.push(s.chief);
+      const ranges = sess.map(s => fmtTime(s.start) + '–' + fmtTime(s.end)).join(' + ');
+      const total = sumHours(sess);
+      sub = [chiefs.join(', ') || who, ranges,
+        total + ' h' + (sess.length > 1 ? ' total' : ''),
+        sess.length > 1 ? sess.length + ' trips' : ''].filter(x => !!x).join(' · ');
     } else {
       tag = '&#128992; NOT STARTED'; cls = 'cb-not';
       sub = who || 'no crew assigned';
