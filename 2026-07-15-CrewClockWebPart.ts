@@ -1137,6 +1137,33 @@ export default class DlsCrewClockWebPart extends BaseClientSideWebPart<IDlsCrewC
         });
       }
 
+      // Finished unscheduled work (v1.0.0.10a). A job worked off-schedule leaves a Crew
+      // Time Log row and nothing else — DONE deletes the status row and there is no
+      // schedule row to hang it on — so it vanished from the board the moment the crew
+      // finished, having been visible all the while they were on it. Any time log rows
+      // still unclaimed here belong to a project with NO schedule row today, which is
+      // exactly that case. Projects that DO have a schedule row are skipped: leftovers
+      // there are the two-crews-on-one-job remainder the rationing above deliberately
+      // leaves alone, and they are not unscheduled work.
+      for (const k in tlByProject) {
+        const leftover = tlByProject[k];
+        if (!leftover || !leftover.length) continue;
+        if (fsPerProject[k]) continue;
+        const sessions = leftover.splice(0, leftover.length).map(toSession);
+        const chiefs: string[] = [];
+        for (const s of sessions) if (s.chief && chiefs.indexOf(s.chief) < 0) chiefs.push(s.chief);
+        rows.push({
+          fsId: 0,
+          label: (label[k] || ('WIP ' + k)) + ' (not on schedule)',
+          crew: chiefs,
+          chief: sessions[0].chief,
+          state: 'done',
+          start: sessions[0].start,
+          end: sessions[sessions.length - 1].end,
+          sessions: sessions
+        });
+      }
+
       this.board = rows;
       this.boardAt = new Date();
       this.boardErr = '';

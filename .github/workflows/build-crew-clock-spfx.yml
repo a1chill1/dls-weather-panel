@@ -60,7 +60,7 @@ jobs:
           d = json.load(open(ps, encoding='utf-8'))
           # NEW ids â€” must never equal the Deed Map's 9a4c2e18-.../4f8b1d62-...
           d['solution']['id'] = 'a432c33b-7531-4de7-ba90-0838691ca757'
-          d['solution']['version'] = '1.0.0.10'
+          d['solution']['version'] = '1.0.0.11'
           # THE RENDER-BUG FIX (2026-07-16). The non-interactive `yo` scaffold defaults this to
           # false, which makes the solution non-tenant-scoped: its component never lands in the
           # tenant's aggregated manifest catalog, so GetClientSideWebParts() cannot see it on ANY
