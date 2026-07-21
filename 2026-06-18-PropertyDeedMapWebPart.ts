@@ -198,6 +198,26 @@ const ZJURS: any[] = [
 function pinKey(s:any){ return (s==null?'':String(s)).toUpperCase().replace(/\s+/g,' ').trim(); }
 function wkNorm5(p:any){ p=(p==null?'':String(p)).trim().split(/\s+/)[0]; if(!p) return ''; const a=p.split('.'); const i=a[0].replace(/[^0-9]/g,''); if(i==='') return ''; const dec=((a[1]||'').replace(/[^0-9]/g,'')+'00').substring(0,2); const ii=('000'+i); return ii.substring(ii.length-3)+dec; }
 function wkNormMap(m:any){ m=(m==null?'':String(m)).trim().split(/\s+/)[0].toUpperCase(); const mm=m.match(/^([0-9]+)([A-Z]?)$/); if(mm){ const d=('000'+mm[1]); return d.substring(d.length-3)+mm[2]; } return m; }
+// Subdivision tax maps carry a GROUP letter the state roll keeps at PARCELID offset 9 ("056 050N B 00700 000 2026").
+// The office enters it as a second token on Tax Map ("050N B"), matching how the TN Property Viewer prints the Parcel ID.
+// Without it, one map+parcel pair can hit 8 different lots — which is how job 260232 landed on the wrong parcel.
+function wkGrp(m:any){ const t=(m==null?'':String(m)).trim().toUpperCase().split(/\s+/); return (t[1]&&/^[A-Z]$/.test(t[1]))?t[1]:''; }
+function wkPidGrp(pid:any){ return String(pid==null?'':pid).substring(9,10).trim(); }
+// Fallback when the group letter is missing: score each candidate lot's ADDRESS against the job's address.
+// Street tokens carry the match; a matching house number is worth more than any single token.
+const WK_ABBR:any={ROAD:'RD',DRIVE:'DR',STREET:'ST',AVENUE:'AVE',BOULEVARD:'BLVD',LANE:'LN',CIRCLE:'CIR',HIGHWAY:'HWY',COURT:'CT',PLACE:'PL',TRAIL:'TRL'};
+function wkAddrParts(s:any){ const t=String(s==null?'':s).toUpperCase().replace(/[^A-Z0-9 ]/g,' ').split(/\s+/).filter(Boolean).map((x:string)=>WK_ABBR[x]||x); return {num:t.filter((x:string)=>/^\d+$/.test(x))[0]||'', st:t.filter((x:string)=>!/^\d+$/.test(x))}; }
+function wkAddrScore(jobAddr:any, parcelAddr:any){ const a=wkAddrParts(jobAddr), b=wkAddrParts(parcelAddr); if(!b.st.length) return 0; const hit=b.st.filter((x:string)=>a.st.indexOf(x)>=0).length; let s=hit/b.st.length; if(a.num&&b.num){ s+=(a.num===b.num?1:-0.3); } return s; }
+// Pick one lot from the candidates the PARCELID query returned. Group letter wins outright; otherwise a
+// clearly-best address match wins. Anything still ambiguous returns null so the pin keeps its stored
+// coordinates rather than silently landing on the wrong lot.
+function wkPickLot(grp:string, jobAddr:any, cands:any[]){
+  if(!cands.length) return null;
+  if(grp){ const g=cands.filter((c:any)=>wkPidGrp(c.pid)===grp); return g.length===1?g[0]:null; }
+  if(cands.length===1) return cands[0];
+  const sc=cands.map((c:any)=>({c:c,s:wkAddrScore(jobAddr,c.addr)})).sort((x:any,y:any)=>y.s-x.s);
+  return (sc[0].s>=1.5 && (sc.length<2 || sc[0].s-sc[1].s>=0.5)) ? sc[0].c : null;
+}
 const WK_TN_SVC='https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0/query';
 function jurById(id:any){ for(let i=0;i<ZJURS.length;i++){ if(ZJURS[i].id===id) return ZJURS[i]; } return null; }
 function jurAt(ll:any){ let best:any=null, ba=Infinity; ZJURS.forEach((j:any)=>{ if(!j.taggable) return; const b=j.bounds; if(ll.lat>=b[0][0]&&ll.lat<=b[1][0]&&ll.lng>=b[0][1]&&ll.lng<=b[1][1]){ const area=(b[1][0]-b[0][0])*(b[1][1]-b[0][1]); if(area<ba){ ba=area; best=j; } } }); return best; }
@@ -1101,8 +1121,9 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
     const map=wkNormMap(x.Tax_x0020_Map); const p5=wkNorm5(x.Parcel_x0020_Number);
     const next=(n:number)=>self.healNext(todo,i+1,made+n);
     if(!cc||!p5){ this.createWorked(x,'','Auto-unresolved','missing county/parcel',()=>next(1)); return; }
-    const q=WK_TN_SVC+"?where="+encodeURIComponent("PARCELID LIKE '"+cc+" "+map+"%' AND PARCELID LIKE '%"+p5+" %'")+"&outFields=PARCELID&returnGeometry=false&resultRecordCount=50&f=json";
-    fetch(q).then((r:any)=>r.json()).then((j:any)=>{ const fs=(j&&j.features)||[]; const mm:any[]=[]; for(let k=0;k<fs.length;k++){ const pid=fs[k].attributes.PARCELID; if(pid.substring(0,3)===cc&&pid.substring(4,8).replace(/\s+$/,'')===map&&pid.substring(11,16)===p5) mm.push(pid); } if(mm.length===1){ self.createWorked(x,mm[0],'Auto','',()=>next(1)); } else { self.createWorked(x,'','Auto-unresolved',(mm.length>1?('group ambiguous: '+mm.length+' lots'):'no exact parcel match'),()=>next(1)); } }).catch(()=>next(0));
+    const grp=wkGrp(x.Tax_x0020_Map);
+    const q=WK_TN_SVC+"?where="+encodeURIComponent("PARCELID LIKE '"+cc+" "+map+"%' AND PARCELID LIKE '%"+p5+" %'")+"&outFields=PARCELID,ADDRESS&returnGeometry=false&resultRecordCount=50&f=json";
+    fetch(q).then((r:any)=>r.json()).then((j:any)=>{ const fs=(j&&j.features)||[]; const mm:any[]=[]; for(let k=0;k<fs.length;k++){ const pid=fs[k].attributes.PARCELID; if(pid.substring(0,3)===cc&&pid.substring(4,8).replace(/\s+$/,'')===map&&pid.substring(11,16)===p5) mm.push({pid:pid,addr:fs[k].attributes.ADDRESS}); } const hit=wkPickLot(grp,x.Property_x0020_Address,mm); if(hit){ self.createWorked(x,hit.pid,'Auto','',()=>next(1)); } else { self.createWorked(x,'','Auto-unresolved',(mm.length>1?('group ambiguous: '+mm.length+' lots — add the group letter to Tax Map'):'no exact parcel match'),()=>next(1)); } }).catch(()=>next(0));
   }
 
   private createWorked(x:any, parcelId:string, source:string, notes:string, cb:any): void {
@@ -1384,6 +1405,7 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
     const grp=grpRaw?grpRaw.toUpperCase():'';
     const parts:string[]=["UPPER(COUNTY_NAME)='"+sql(county.toUpperCase())+"'"];
     if(map) parts.push("PARCELID LIKE '___ "+sql(map)+"%'");
+    if(grp) parts.push("GP='"+sql(grp)+"'");
     if(p5) parts.push("PARCELID LIKE '%"+sql(p5)+" %'");
     if(subRaw) parts.push("UPPER(SUBDIV) LIKE '%"+sql(subRaw.toUpperCase())+"%'");
     const where=parts.join(' AND ');
@@ -1755,24 +1777,33 @@ for(var k=0;k<ZONING_LAYERS.length;k++){ var uu=ZONING_LAYERS[k]; var ufe=this._
   // v50: plot each TN project at its true parcel centroid (County + Tax Map + Parcel, keyless
   // TN statewide service) instead of the stored WIP Lat/Lng — which Flow 9 sets to a city-center
   // point. Falls back to the stored Lat/Lng for KY / no-parcel rows or any lookup miss. Batched
-  // (25/query, sequential) to stay nimble; re-renders once each batch resolves.
+  // sequentially; re-renders once each batch resolves.
+  // v53: 25/query built a ~2,360-char URL, over the service's limit — it answered with an HTML error
+  // page, so 5 of 6 batches silently resolved nothing and those jobs kept their city-center pins.
+  // 12 keeps the longest URL near 1,300.
   private resolveProjectCentroids(): void {
     const todo:any[]=[];
-    this.projects.forEach((j:any)=>{ if(!j.Cc||!j.TaxMap||!j.Parcel) return; const map=wkNormMap(j.TaxMap); const p5=wkNorm5(j.Parcel); if(!map||!p5) return; j._map=map; j._p5=p5; todo.push(j); });
+    this.projects.forEach((j:any)=>{ if(!j.Cc||!j.TaxMap||!j.Parcel) return; const map=wkNormMap(j.TaxMap); const p5=wkNorm5(j.Parcel); if(!map||!p5) return; j._map=map; j._p5=p5; j._grp=wkGrp(j.TaxMap); todo.push(j); });
     if(!todo.length) return;
     this.resolveCentroidChunk(todo,0);
   }
   private resolveCentroidChunk(todo:any[], i:number): void {
     const self=this;
     if(i>=todo.length){ this.renderProjectPins(); return; }
-    const chunk=todo.slice(i,i+25);
+    const CH=12;
+    const chunk=todo.slice(i,i+CH);
     const where=chunk.map((j:any)=>"(PARCELID LIKE '"+j.Cc+" "+j._map+"%' AND PARCELID LIKE '%"+j._p5+" %')").join(' OR ');
-    const url=WK_TN_SVC+"?where="+encodeURIComponent(where)+"&outFields=PARCELID&returnGeometry=false&returnCentroid=true&outSR=4326&resultRecordCount=1000&f=json";
+    const url=WK_TN_SVC+"?where="+encodeURIComponent(where)+"&outFields=PARCELID,ADDRESS&returnGeometry=false&returnCentroid=true&outSR=4326&resultRecordCount=1000&f=json";
     this.arcgisFetch(url).then((d:any)=>{
       const fs=(d&&d.features)||[];
-      for(let k=0;k<fs.length;k++){ const pid=String(fs[k].attributes.PARCELID); const ct=fs[k].centroid; if(!ct||ct.x==null||ct.y==null) continue; const cc=pid.substring(0,3); const mp=pid.substring(4,8).replace(/\s+$/,''); const pp=pid.substring(11,16); for(let q=0;q<chunk.length;q++){ const j=chunk[q]; if(j.Cc===cc&&j._map===mp&&j._p5===pp){ j.Lat=ct.y; j.Lng=ct.x; j._pc=true; break; } } }
-      self.resolveCentroidChunk(todo,i+25);
-    }).catch(()=>{ self.resolveCentroidChunk(todo,i+25); });
+      // Collect every lot that matches county+map+parcel, then disambiguate — a subdivision map can return
+      // 8 lots for one parcel number, and taking the first put job 260232 on a lot two streets away.
+      const cands:any={};
+      for(let k=0;k<fs.length;k++){ const pid=String(fs[k].attributes.PARCELID); const ct=fs[k].centroid; if(!ct||ct.x==null||ct.y==null) continue; const cc=pid.substring(0,3); const mp=pid.substring(4,8).replace(/\s+$/,''); const pp=pid.substring(11,16);
+        for(let q=0;q<chunk.length;q++){ const j=chunk[q]; if(j.Cc===cc&&j._map===mp&&j._p5===pp){ (cands[q]=cands[q]||[]).push({pid:pid,addr:fs[k].attributes.ADDRESS,x:ct.x,y:ct.y}); break; } } }
+      for(let q=0;q<chunk.length;q++){ const j=chunk[q]; const hit=wkPickLot(j._grp,j.Address,cands[q]||[]); if(hit){ j.Lat=hit.y; j.Lng=hit.x; j._pc=true; } }
+      self.resolveCentroidChunk(todo,i+CH);
+    }).catch(()=>{ self.resolveCentroidChunk(todo,i+CH); });
   }
 
   private projVisible(j:any): boolean {
@@ -1900,7 +1931,7 @@ for(var k=0;k<ZONING_LAYERS.length;k++){ var uu=ZONING_LAYERS[k]; var ufe=this._
       const map=wkNormMap(q.taxMap); const p5=wkNorm5(q.parcel);
       if(!q.county || !map || !p5) continue;
       if(!self.iqIsTn(q.county)) continue;   // statewide service covers TN 86 counties (metros/KY skipped)
-      const key=q.county.toUpperCase(); if(!byCounty[key]) byCounty[key]={county:q.county,items:[]}; byCounty[key].items.push({q:q,map:map,p5:p5});
+      const key=q.county.toUpperCase(); if(!byCounty[key]) byCounty[key]={county:q.county,items:[]}; byCounty[key].items.push({q:q,map:map,p5:p5,grp:wkGrp(q.taxMap)});
     }
     // Chunk each county's inquiries so the OR'd PARCELID query URL stays under the ArcGIS GET limit
     // (Macon reached 38 inquiries -> a single query exceeded the URL limit, server returned HTML, the whole county failed to resolve).
@@ -1921,12 +1952,15 @@ for(var k=0;k<ZONING_LAYERS.length;k++){ var uu=ZONING_LAYERS[k]; var ufe=this._
     const url=WK_TN_SVC+'?'+qs({where:where,outFields:outFieldsFor(SOURCES[0]),returnGeometry:true,outSR:4326,resultRecordCount:1000,f:'json'});
     this.arcgisFetch(url).then((d:any)=>{ const feats=esriToFeatures(d);
       for(let g=0;g<grp.items.length;g++){ const it=grp.items[g]; if(self.inqGeo[it.q.Id]) continue;
+        const cands:any[]=[];
         for(let f=0;f<feats.length;f++){ const pid=String((feats[f].properties as any).PARCELID||'');
           if(pid.substring(4,8).replace(/\s+$/,'')!==it.map) continue;
           if(pid.substring(11,16)!==it.p5) continue;
-          (feats[f].properties as any).__src='tn'; const r=outerRing(feats[f].geometry); if(!r||!r.length) continue;
-          self.inqGeo[it.q.Id]={feat:feats[f], center:centroid(r)}; break;
+          cands.push({pid:pid, addr:(feats[f].properties as any).ADDRESS, feat:feats[f]});
         }
+        const hit=wkPickLot(it.grp, it.q.street, cands); if(!hit) continue;
+        (hit.feat.properties as any).__src='tn'; const r=outerRing(hit.feat.geometry); if(!r||!r.length) continue;
+        self.inqGeo[it.q.Id]={feat:hit.feat, center:centroid(r)};
       }
       done();
     }).catch(()=>{ done(); });
