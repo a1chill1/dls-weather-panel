@@ -495,9 +495,12 @@ function bboxIntersect(a:any,b:any){ return !(b[0]>a[2]||b[2]<a[0]||b[1]>a[3]||b
 // Ported from the standalone Coverage Map (2026-06-15): status-colored project pins + Status/Deadline/
 // County/JobType/Year filters + search + one-click job-folder links, reading the WIP list live. Toggled
 // from the toolbar (Projects Off/On). Status colors = the WIP "Project Status" column's exact colors.
-const PALETTE:any = { 'Fielding':'Blue','Crew Assigned':'Magenta','Fielding Complete':'Cyan','Drafting':'Purple','Drafting Complete':'DarkOrange','Waiting on Client':'#008080','Planning Approval':'LimeGreen','HOLD':'Black','Pending Bill':'Brown','Billed':'Red','Paid - Closeout':'Green','Dropped Project':'Gray','Initial Research':'Pink','Onsite Meeting':'Pink','Waiting on Signatures':'Pink','Plat Submitted':'Pink' };
-const STATUS_ORDER:any = ['Initial Research','Fielding','Crew Assigned','Fielding Complete','Drafting','Drafting Complete','Onsite Meeting','Waiting on Client','Waiting on Signatures','Plat Submitted','Planning Approval','HOLD','Pending Bill','Billed','Paid - Closeout','Dropped Project'];
-const DEFAULT_STATUS_ON:any = ['Fielding','Crew Assigned','Drafting','Drafting Complete','Planning Approval','Waiting on Client'];
+const PALETTE:any = { 'Fielding':'Blue','Crew Assigned':'Magenta','Return Trip Needed':'Goldenrod','Fielding Complete':'Cyan','Drafting':'Purple','Drafting Complete':'DarkOrange','Waiting on Client':'#008080','Planning Approval':'LimeGreen','HOLD':'Black','Pending Bill':'Brown','Billed':'Red','Paid - Closeout':'Green','Dropped Project':'Gray','Initial Research':'Pink','Onsite Meeting':'Pink','Waiting on Signatures':'Pink','Plat Submitted':'Pink' };
+const STATUS_ORDER:any = ['Initial Research','Fielding','Crew Assigned','Return Trip Needed','Fielding Complete','Drafting','Drafting Complete','Onsite Meeting','Waiting on Client','Waiting on Signatures','Plat Submitted','Planning Approval','HOLD','Pending Bill','Billed','Paid - Closeout','Dropped Project'];
+// 'Return Trip Needed' is ON by default: it's an active field-stage status, same as Fielding /
+// Crew Assigned. Statuses absent from DEFAULT_STATUS_ON default to HIDDEN (see pStatusOn build),
+// so omitting a new active status here silently drops its pins off the map.
+const DEFAULT_STATUS_ON:any = ['Fielding','Crew Assigned','Return Trip Needed','Drafting','Drafting Complete','Planning Approval','Waiting on Client'];
 const DEADLINE_ORDER:any = ['Overdue','Due in 14 days','Due in 30 days','Due later','No date','Completed'];
 // ---- Inquiries layer (IQ list) — amber triangles on each inquiry's parcel; mirrors the Projects layer ----
 const IQ_INQUIRIES_GUID = 'a2da06ea-55d3-4221-9988-035800aa59a5';
