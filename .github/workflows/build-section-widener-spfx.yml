@@ -1,0 +1,94 @@
+# Place at .github/workflows/build-section-widener-spfx.yml in the a1chill1/dls-weather-panel
+# repo, alongside 2026-07-22-SectionWidenerWebPart.ts.
+# Builds the DLS Section Widener SPFx package and uploads the .sppkg as a download.
+#
+# Mirrors the Crew Clock pipeline (2026-07-15-build-crew-clock-spfx.yml):
+#   1. SEPARATE SOLUTION — own solution/component IDs, own dist/ filename. Must never
+#      touch dls-property-map.sppkg or dls-crew-clock.sppkg (shared bundles have
+#      silently overwritten work here).
+#   2. framework none, no extra deps — the web part renders nothing and only sets
+#      inline styles on its own section container.
+#
+# PINNED IDs mean a rebuild UPGRADES the deployed app in place — bump `version` below on
+# every rebuild or the App Catalog will not offer the upgrade.
+# Run from the Actions tab. No secrets needed.
+name: Build Section Widener SPFx package
+
+on:
+  workflow_dispatch: {}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      CI: "true"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "18.17.1"
+
+      - name: Install SPFx toolchain
+        run: npm install -g gulp-cli yo@4.3.1 @microsoft/generator-sharepoint@1.18.2
+
+      - name: Scaffold a clean SPFx solution
+        run: |
+          yo @microsoft/sharepoint \
+            --solution-name "dls-section-widener" \
+            --component-type webpart \
+            --component-name "DlsSectionWidener" \
+            --component-description "DLS Section Widener — widens its own canvas section edge-to-edge on desktop" \
+            --framework none \
+            --skip-install true \
+            --no-insight
+          ls -la dls-section-widener/src/webparts/dlsSectionWidener/ || true
+
+      - name: Inject the Section Widener web part code
+        run: cp 2026-07-22-SectionWidenerWebPart.ts dls-section-widener/src/webparts/dlsSectionWidener/DlsSectionWidenerWebPart.ts
+
+      - name: Pin solution + component IDs (upgrade in place) and set version
+        run: |
+          cd dls-section-widener
+          python3 - << 'PY'
+          import json, glob, re
+          ps = 'config/package-solution.json'
+          d = json.load(open(ps, encoding='utf-8'))
+          # NEW ids — must never equal the Deed Map's, Weather Panel's, or Crew Clock's.
+          d['solution']['id'] = 'ffefabd9-2731-4722-a892-e236931ffa3a'
+          d['solution']['version'] = '1.0.0.1'
+          # REQUIRED (learned the hard way on Crew Clock): the non-interactive yo
+          # scaffold defaults this to false, which keeps the component out of the
+          # tenant's aggregated manifest catalog — the web part then renders as an
+          # empty zone on every site. Must be true.
+          d['solution']['skipFeatureDeployment'] = True
+          json.dump(d, open(ps, 'w', encoding='utf-8'), indent=2)
+          mf = glob.glob('src/webparts/dlsSectionWidener/*.manifest.json')[0]
+          t = open(mf, encoding='utf-8').read()
+          t2 = re.sub(r'("id"\s*:\s*")[0-9a-fA-F-]{36}(")',
+                      r'\g<1>db0666fc-418b-491e-9077-7a01b2ff5fec\g<2>', t, count=1)
+          assert t2 != t, 'manifest component id not found/replaced'
+          open(mf, 'w', encoding='utf-8').write(t2)
+          print('Pinned solution id+version in', ps, 'and component id in', mf)
+          PY
+
+      - name: Install dependencies
+        run: |
+          cd dls-section-widener
+          npm install
+
+      - name: Build + package (ship)
+        run: |
+          cd dls-section-widener
+          gulp bundle --ship
+          gulp package-solution --ship
+          ls -la sharepoint/solution/
+
+      - name: Upload the .sppkg
+        uses: actions/upload-artifact@v4
+        with:
+          name: dls-section-widener-sppkg
+          path: dls-section-widener/sharepoint/solution/*.sppkg
+          if-no-files-found: error
