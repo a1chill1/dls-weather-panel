@@ -46,7 +46,12 @@ const F = {
   // NEW columns added by build step 2 (names chosen at creation — keep in sync):
   entrySource:  'EntrySource',
   distanceMi:   'ClockInDistanceMi',
-  autoFlagged:  'AutoFlagged'
+  autoFlagged:  'AutoFlagged',
+
+  // v1.0.0.13 idempotency key. Created live 2026-07-22 via CreateFieldAsXml
+  // Options:8 (clean internal name, Text 80). The existing 'Session' column is a
+  // Morning/Afternoon Choice with FillInChoice=false — NOT usable as a key.
+  entryId:      'ClientEntryId'
 };
 
 // Field Schedule — verified live 2026-07-15.
@@ -232,6 +237,9 @@ interface ISession {
   chief: string;         // snapshot at START — see startedBy()
   startIso: string;
   distMi: number | null;
+  // v1.0.0.13 — written to ClientEntryId on the row. Sessions saved by <=1.0.0.12
+  // have no key; done()/endAt() mint one at submit time for those.
+  entryId?: string;
   // Crew Status row id, so the delete at DONE is precise. 0 = no row: either the
   // feature is off, the START write failed (offline — the common case), or the
   // session predates 1.0.0.8. All three mean "nothing to delete", which is why
@@ -574,12 +582,26 @@ export default class DlsCrewClockWebPart extends BaseClientSideWebPart<IDlsCrewC
   // NOT AutoFlagged: that flag means "the time was guessed, go check it", and
   // overloading it with crew mismatch would dilute a signal the office is starting to
   // rely on (decision: Alex, 2026-07-20).
+  // DUPLICATE ROOT CAUSE (v1.0.0.13, found live 2026-07-22 on job 260232): a POST
+  // can LAND server-side while the response is lost in transit (crew driving out
+  // of signal). submit()'s catch then queues the already-written entry, and every
+  // later flush whose response is also lost re-queues it — four identical rows
+  // observed (two of them in the same second). The v1.0.0.9 flushing flag only
+  // stops concurrent flushes; it cannot know a row already exists. Fix: every row
+  // carries a unique ClientEntryId, and flushQueue() probes for it before
+  // re-sending. First-time sends stay a single blind POST — the key only has to
+  // make RETRIES safe.
+  private newEntryId(fsId: number, startIso: string): string {
+    return fsId + '-' + startIso + '-' + Math.random().toString(36).slice(2, 10);
+  }
+
   private buildBody(job: { wipId: number; label: string; crew: string[] }, start: Date, end: Date,
                     fieldComplete: boolean, distMi: number | null, source: string, flagged: boolean,
-                    chief: string): any {
+                    chief: string, entryId: string): any {
     const s = roundHalfHour(start);
     const e = enforceMinEnd(s, roundHalfHour(end));
     const body: any = {};
+    body[F.entryId]       = entryId;
     body[F.projectId]     = job.wipId;
     body[F.startTime]     = s.toISOString();
     body[F.endTime]       = e.toISOString();
@@ -656,10 +678,25 @@ export default class DlsCrewClockWebPart extends BaseClientSideWebPart<IDlsCrewC
         this.render();
         return;
       }
-      this.spPost(this.timeLogApi() + '/items', q[i].body).then((r: any) => {
-        if (r.status >= 200 && r.status < 300) done++; else keep.push(q[i]);
-        step(i + 1);
-      }).catch(() => { keep.push(q[i]); step(i + 1); });
+      // IDEMPOTENCY PROBE (v1.0.0.13): a queued entry may already be a row —
+      // the original POST can land while its response is lost (the exact case
+      // that made 4 rows for one DONE on 2026-07-22). Ask before re-sending.
+      // Probe failure (still offline) keeps the entry queued; entries written
+      // by <=1.0.0.12 have no key and are sent blind as before.
+      const key = q[i].body && q[i].body[F.entryId];
+      const send = (): void => {
+        this.spPost(this.timeLogApi() + '/items', q[i].body).then((r: any) => {
+          if (r.status >= 200 && r.status < 300) done++; else keep.push(q[i]);
+          step(i + 1);
+        }).catch(() => { keep.push(q[i]); step(i + 1); });
+      };
+      if (!key) { send(); return; }
+      this.spGet(this.timeLogApi() + "/items?$select=Id&$top=1&$filter=" + F.entryId + " eq '" + key + "'")
+        .then((j: any) => {
+          if (j && j.value && j.value.length) { done++; step(i + 1); }  // already on the server
+          else send();
+        })
+        .catch(() => { keep.push(q[i]); step(i + 1); });
     };
     step(0);
   }
@@ -685,7 +722,8 @@ export default class DlsCrewClockWebPart extends BaseClientSideWebPart<IDlsCrewC
       chief: this.chief,
       startIso: roundHalfHour(new Date()).toISOString(),
       distMi: job.distMi,
-      statusId: 0
+      statusId: 0,
+      entryId: this.newEntryId(job.fsId, roundHalfHour(new Date()).toISOString())
     };
     lsSet(LS_SESSION, this.session);
     this.status = '';
@@ -697,14 +735,16 @@ export default class DlsCrewClockWebPart extends BaseClientSideWebPart<IDlsCrewC
 
   private done(fieldComplete: boolean): void {
     const s = this.session; if (!s) return;
-    const body = this.buildBody(s, new Date(s.startIso), new Date(), fieldComplete, s.distMi, 'CrewClockApp', false, this.startedBy());
+    const body = this.buildBody(s, new Date(s.startIso), new Date(), fieldComplete, s.distMi, 'CrewClockApp', false, this.startedBy(),
+      s.entryId || this.newEntryId(s.fsId, s.startIso));
     this.submit(body, s.label);
   }
 
   // End an open session at an explicit time (stale close-out / end-now banner).
   private endAt(end: Date, flagged: boolean, source: string): void {
     const s = this.session; if (!s) return;
-    const body = this.buildBody(s, new Date(s.startIso), end, false, s.distMi, source, flagged, this.startedBy());
+    const body = this.buildBody(s, new Date(s.startIso), end, false, s.distMi, source, flagged, this.startedBy(),
+      s.entryId || this.newEntryId(s.fsId, s.startIso));
     this.submit(body, s.label);
   }
 
@@ -714,7 +754,8 @@ export default class DlsCrewClockWebPart extends BaseClientSideWebPart<IDlsCrewC
       return new Date(day.getFullYear(), day.getMonth(), day.getDate(), parseInt(p[0], 10), parseInt(p[1], 10), 0, 0);
     };
     // No session here, so the device chief is the only identity available.
-    const body = this.buildBody(job, mk(startHhmm), mk(endHhmm), false, null, 'CrewClockApp', true, this.chief);
+    const body = this.buildBody(job, mk(startHhmm), mk(endHhmm), false, null, 'CrewClockApp', true, this.chief,
+      this.newEntryId(job.fsId, mk(startHhmm).toISOString()));
     this.submit(body, job.label);
   }
 
