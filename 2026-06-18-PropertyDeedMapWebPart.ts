@@ -15,6 +15,13 @@
 //
 // SPFx note: popup buttons use data-act/data-id + ONE delegated listener (module
 // scope means inline onclick can't see our functions).
+//
+// v54 (2026-07-23): (a) popup shows the latest deed Book/Page under Address for every
+// lot, filled from the same Worker fetch that feeds the value box (no extra call), and
+// cached on the popup entry so the "Deed search" click is instant; (b) TitleSearcher /
+// US Title Search book/page searches now send DIGITS ONLY (Record-Book "RB84" -> "84").
+// The book/page pipeline itself was never lost — it had gone dark because the TN
+// Comptroller WAF began 403-ing the Worker's user-agent (fixed in the Worker, not here).
 // ============================================================================
 import { Version } from '@microsoft/sp-core-library';
 import { type IPropertyPaneConfiguration, PropertyPaneTextField } from '@microsoft/sp-property-pane';
@@ -109,7 +116,7 @@ const US_HOST = 'https://www.ustitlesearch.net/';
 // to 4 (index matches 4-wide strings; unpadded => 0 results). RecordingClassId=-1 = Search All Classes.
 function usPad(v:any): string { let t=(v==null?'':String(v)).replace(/^\s+|\s+$/g,''); if(/^[0-9]+$/.test(t)){ while(t.length<4){ t='0'+t; } } return t; }
 function usCountyUrl(sub:string): string { return US_HOST+'changesubscription.asp?SubscriptionId='+encodeURIComponent(sub); }
-function usBookPageUrl(bp:any): string { return US_HOST+'allbookandpagesearchresults.asp?'+qs({ Action:'SEARCH', PageSize:'10', PageBase:'1', Page:'1', RecordingClassId:'-1', RecordBook:usPad(bp.book), RecordPage:usPad(bp.page), FilingNumber:'000000000' }); }
+function usBookPageUrl(bp:any): string { return US_HOST+'allbookandpagesearchresults.asp?'+qs({ Action:'SEARCH', PageSize:'10', PageBase:'1', Page:'1', RecordingClassId:'-1', RecordBook:usPad(bpDigits(bp.book)), RecordPage:usPad(bpDigits(bp.page)), FilingNumber:'000000000' }); }
 
 // ---- per-county SOURCE REGISTRY (candidate field names => schema-resilient) ----
 const SOURCES: any[] = [
@@ -507,7 +514,11 @@ function featHitLL(feat:any,lng:number,lat:number){ if(!feat||!feat.geometry) re
 function normalize(attrs:any, src:any){ const n:any={src:src}; n.pin=pick(attrs,src.f.pin); n.owner=pick(attrs,src.f.owner); n.owner2=pick(attrs,src.f.owner2); n.address=pick(attrs,src.f.address); n.mail=pick(attrs,src.f.mail); n.subdiv=pick(attrs,src.f.subdiv); n.lot=pick(attrs,src.f.lot); n.acres=pick(attrs,src.f.acres); n.zoning=pick(attrs,src.f.zoning); n.parcelno=pick(attrs,src.f.parcelno); n.assr=pick(attrs,src.f.assr); n.tpad=pick(attrs,src.f.tpad); const gm=(n.tpad.match(/gislink=([^&]+)/)||[])[1]; n.gislink=gm?decodeURIComponent(gm):pick(attrs,src.f.gislinkf); n.deedBook=pick(attrs,src.f.deedBook); n.deedPage=pick(attrs,src.f.deedPage); n.legalref=pick(attrs,src.f.legalref); n.deedref=pick(attrs,src.f.deedref); n.state=src.state; n.county=src.county||pick(attrs,[src.countyField]); if(n.county) n.county=n.county.toUpperCase().replace(/ COUNTY$/,'').trim(); return n; }
 function parseBookPage(n:any){ if(n.deedBook&&n.deedPage&&/\d/.test(n.deedBook)&&/\d/.test(n.deedPage)) return {book:n.deedBook.replace(/[^0-9A-Za-z]/g,''),page:n.deedPage.replace(/[^0-9A-Za-z]/g,'')}; const ref=n.legalref||''; const m=ref.match(/^\s*([0-9A-Za-z]+)\s*[-\/]\s*([0-9A-Za-z]+)\s*$/); if(m) return {book:m[1],page:m[2]}; return null; }
 function tsNameUrl(owner:string){ const name=(owner||'').split(',')[0].trim(); return TS_BASE+'nameSearch.php?'+qs({nameType:'2',searchType:'PA',indexType:'BOTH',p1:name,p2:'',expandAll:'on',startDate:'',endDate:'',itype:'0',executeSearch:'Execute Search'}); }
-function tsBookPageUrl(bp:any){ return TS_BASE+'bookPageSearch.php?'+qs({book:bp.book,page:bp.page,fileNumber:'',executeSearch:'Execute Search'}); }
+// TitleSearcher's Book#/Page# index matches on digits only — a Record-Book prefix like
+// "RB84" must be sent as "84" (page likewise). Strip non-digits; if that empties the field
+// (e.g. an all-letter book), fall back to the raw value so we still search on something.
+function bpDigits(v:any){ const s=(v==null?'':String(v)); const d=s.replace(/\D/g,''); return d||s.replace(/[^0-9A-Za-z]/g,''); }
+function tsBookPageUrl(bp:any){ return TS_BASE+'bookPageSearch.php?'+qs({book:bpDigits(bp.book),page:bpDigits(bp.page),fileNumber:'',executeSearch:'Execute Search'}); }
 function outFieldsFor(s:any){ const set:any={}; ['pin','owner','owner2','address','mail','subdiv','lot','acres','zoning','assr','tpad','gislinkf','deedBook','deedPage','legalref','deedref','parcelno'].forEach((k)=>{ (s.f[k]||[]).forEach((fn:string)=>{ set[fn]=1; }); }); if(s.countyField) set[s.countyField]=1; return Object.keys(set).join(',')||'*'; }
 function bboxIntersect(a:any,b:any){ return !(b[0]>a[2]||b[2]<a[0]||b[1]>a[3]||b[3]<a[1]); }
 
@@ -945,7 +956,13 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
     let owner=esc(n.owner+(n.owner2?'; '+n.owner2:''));
     if(n.src.ownerWithheld && !owner) owner='<i>(owner not published by county)</i>';
     rows+='<tr><td class="k">Owner</td><td>'+(owner||'—')+'</td></tr>';
-    row('Address',n.address); row('Parcel',n.pin);
+    row('Address',n.address);
+    // Latest deed Book/Page, shown right under Address for every lot. If the parcel's own
+    // attributes carry it (parseBookPage), render immediately; otherwise seed a placeholder
+    // that onPopupOpen fills from the SAME Worker fetch that feeds the value box (no extra call).
+    { const _lbp=parseBookPage(n); const _bpTxt=_lbp?esc(_lbp.book+' / '+_lbp.page):'<span style="color:#94a3b8">…</span>';
+      rows+='<tr><td class="k">Book/Page</td><td id="bp_'+id+'">'+_bpTxt+'</td></tr>'; }
+    row('Parcel',n.pin);
     if(n.acres) row('Acres', (+n.acres? (+n.acres).toFixed(2):n.acres));
     if(n.subdiv) row('Subdiv', n.subdiv+(n.lot?'  Lot '+n.lot:''));
     if(n.zoning) row('Zoning', n.zoning);
@@ -997,15 +1014,24 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
       if(!root) return;
       const box:any = root.querySelector('.valbox[data-gis]');
       if(!box || box.getAttribute('data-done')==='1') return;
+      // The Book/Page cell (bp_<id>) rides along on this one fetch. Derive the popup entry id
+      // from the valbox id ('vb_'+id) so we can stash the resolved book/page for an instant deep link.
+      const bpCell:any = root.querySelector('td[id^="bp_"]');
+      const pid = (box.id||'').indexOf('vb_')===0 ? box.id.slice(3) : '';
+      const setBP = (txt:string)=>{ if(bpCell && /…/.test(bpCell.textContent||'')) bpCell.textContent = txt; };
       const gis = box.getAttribute('data-gis')||'';
-      if(!gis || !this.workerUrl){ box.style.display='none'; return; }
+      if(!gis || !this.workerUrl){ box.style.display='none'; setBP('—'); return; }
       box.setAttribute('data-done','1');
       box.innerHTML = '<div class="vbx-hd">Sale &amp; assessor value</div><div style="color:#64748b;font-size:11px">Loading…</div>';
       const acres = parseFloat(box.getAttribute('data-acres')||'') || 0;
       const self = this;
       fetch(this.workerUrl+'?gislink='+encodeURIComponent(gis)).then((r:any)=>r.json())
-        .then((d:any)=>{ if(!d || !d.ok){ box.style.display='none'; return; } const h=self.valBoxHtml(d, acres); if(h){ box.innerHTML=h; } else { box.style.display='none'; } })
-        .catch(()=>{ box.style.display='none'; });
+        .then((d:any)=>{
+          if(d && d.ok && d.best && d.best.book){ setBP(d.best.book+' / '+d.best.page); if(pid && self.POP[pid]) self.POP[pid].bestBP=d.best; }
+          else { setBP('—'); }
+          if(!d || !d.ok){ box.style.display='none'; return; } const h=self.valBoxHtml(d, acres); if(h){ box.innerHTML=h; } else { box.style.display='none'; }
+        })
+        .catch(()=>{ box.style.display='none'; setBP('—'); });
     }catch(err){}
   }
 
@@ -1351,6 +1377,7 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
     const w=this.openDeferred();
     const nameFallback=()=>this.tsCountyThen(w,e.tsCnum,tsNameUrl(e.owner||''));
     if(e.localBP){ this.tsCountyThen(w,e.tsCnum,tsBookPageUrl(e.localBP)); return; }
+    if(e.bestBP && e.bestBP.book){ this.tsCountyThen(w,e.tsCnum,tsBookPageUrl(e.bestBP)); return; }  // prefetched on popup open → instant
     if(e.gislink && this.workerUrl){
       fetch(this.workerUrl+'?gislink='+encodeURIComponent(e.gislink)).then((r)=>r.json())
         .then((d:any)=>{ if(d&&d.ok&&d.best&&d.best.book){ this.setStatus('Latest deed: '+(d.best.type||'')+' Bk '+d.best.book+' Pg '+d.best.page); this.tsCountyThen(w,e.tsCnum,tsBookPageUrl(d.best)); } else { this.setStatus('No book/page found — using owner-name search'); nameFallback(); } })
@@ -1364,6 +1391,7 @@ export default class PropertyDeedMapWebPart extends BaseClientSideWebPart<IPrope
     const go=(bp:any)=>{ this.setStatus('US Title Search'+(e.county?' · '+e.county:'')+': Book '+bp.book+' Page '+bp.page+(bp.type?' ('+bp.type+')':'')); this.copyText(bp.book+' '+bp.page); const u=usBookPageUrl(bp); if(sub){ this.usCountyThen(w,sub,u); } else { try{ if(w) w.location=u; }catch(er){} } };
     const fail=(m:string)=>{ try{ if(w) w.location=(sub?usCountyUrl(sub):US_BASE); }catch(er){} this.setStatus(m); };
     if(e.localBP){ go(e.localBP); return; }
+    if(e.bestBP && e.bestBP.book){ go(e.bestBP); return; }  // prefetched on popup open → instant
     if(e.gislink && this.workerUrl){
       fetch(this.workerUrl+'?gislink='+encodeURIComponent(e.gislink)).then((r)=>r.json())
         .then((d:any)=>{ if(d&&d.ok&&d.best&&d.best.book) go(d.best); else fail('No book/page found — opened US Title Search; use a name search.'); })
